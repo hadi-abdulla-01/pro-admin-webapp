@@ -1,7 +1,6 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin-layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -174,8 +173,16 @@ export default function CompaniesPage() {
   };
 
   // Filter & Search Logic
-  const searchParams = useSearchParams();
-  const entityFilter = searchParams.get('filter');
+  const [entityFilter, setEntityFilter] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      setEntityFilter(sp.get('filter'));
+    } catch (e) {
+      setEntityFilter(null);
+    }
+  }, []);
 
   const filteredCompanies = (companies || []).filter((company) => {
     const matchesSearch = company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

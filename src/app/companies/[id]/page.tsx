@@ -555,12 +555,10 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   let partnerDocumentSummary: any[] = [];
 
   if (company?.entity_type === 'individual') {
-    const familyCompanyDocs = (documents || []).filter((d: any) => d.document_categories?.category_group === 'family');
-    const familyRelativeDocs = (employeeCompanyDocs || []).filter((d: any) => d.document_categories?.category_group === 'relative');
-    const familyDocs = [...familyCompanyDocs, ...familyRelativeDocs];
-    const sponsorDocs = (documents || []).filter((d: any) => d.document_categories?.category_group === 'partner');
-    companyDocumentSummary = familyDocs;
-    partnerDocumentSummary = sponsorDocs;
+    const sponsorDocs = (documents || []).filter((d: any) => d.document_categories?.category_group === 'family');
+    const relativeDocs = (employeeCompanyDocs || []).filter((d: any) => d.document_categories?.category_group === 'relative');
+    companyDocumentSummary = sponsorDocs;
+    partnerDocumentSummary = relativeDocs;
   } else {
     companyDocumentSummary = (documents || []).filter((doc) => !isPartnerDocument(doc));
     partnerDocumentSummary = (documents || []).filter(isPartnerDocument);
@@ -596,9 +594,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const documentFilterLabel =
     company?.entity_type === 'individual'
       ? (documentSummaryFilter === 'company'
-          ? 'Family Documents'
+          ? 'Sponsor Documents'
           : documentSummaryFilter === 'partner'
-            ? 'Sponsor Documents'
+            ? 'Relative Documents'
             : 'All Documents')
       : (documentSummaryFilter === 'company'
           ? 'Company Documents'
@@ -1058,7 +1056,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             <button
               onClick={() => {
                 if (company?.entity_type === 'individual') {
-                  setUploadMainCategory(documentSummaryFilter === 'partner' ? 'partner' : 'family');
+                  setUploadMainCategory(documentSummaryFilter === 'partner' ? 'relative' : 'family');
                 }
                 setIsDocModalOpen(true);
               }}
@@ -1212,11 +1210,11 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
                     <h4 className="font-title-md text-on-surface font-bold mb-xs">
-                      {company?.entity_type === 'individual' ? 'Family Documents' : 'Company Documents'}
+                      {company?.entity_type === 'individual' ? 'Sponsor Documents' : 'Company Documents'}
                     </h4>
                     <p className="text-xs text-on-surface-variant mb-md">
                       {company?.entity_type === 'individual'
-                        ? 'Passport, visa, Emirates ID and personal records'
+                        ? 'Sponsor or head of family visa, passport, EID and residency files'
                         : 'TL, MOA, POA, certificates and establishment records'}
                     </p>
                     <div className="flex flex-wrap gap-2 mb-md">
@@ -1235,7 +1233,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     ) : (
                       <p className="text-xs text-on-surface-variant">
-                        {company?.entity_type === 'individual' ? 'No family documents uploaded.' : 'No company documents uploaded.'}
+                        {company?.entity_type === 'individual' ? 'No sponsor documents uploaded.' : 'No company documents uploaded.'}
                       </p>
                     )}
                   </div>
@@ -1254,11 +1252,11 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
                     <h4 className="font-title-md text-on-surface font-bold mb-xs">
-                      {company?.entity_type === 'individual' ? 'Sponsor Documents' : 'Partner Documents'}
+                      {company?.entity_type === 'individual' ? 'Relative Documents' : 'Partner Documents'}
                     </h4>
                     <p className="text-xs text-on-surface-variant mb-md">
                       {company?.entity_type === 'individual'
-                        ? 'Sponsor or head of family visa, passport, EID and residency files'
+                        ? 'Relative visa, passport, EID and personal records'
                         : 'Partner or sponsor passport, visa, EID and residency files'}
                     </p>
                     <div className="flex flex-wrap gap-2 mb-md">
@@ -1276,7 +1274,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-on-surface-variant">No partner documents uploaded.</p>
+                      <p className="text-xs text-on-surface-variant">
+                        {company?.entity_type === 'individual' ? 'No relative documents uploaded.' : 'No partner documents uploaded.'}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1355,7 +1355,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   <button
                     onClick={() => {
                       if (company?.entity_type === 'individual') {
-                        setUploadMainCategory(documentSummaryFilter === 'partner' ? 'partner' : 'family');
+                        setUploadMainCategory(documentSummaryFilter === 'partner' ? 'relative' : 'family');
                       }
                       setIsDocModalOpen(true);
                     }}
@@ -2019,31 +2019,23 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             </div>
 
             <form onSubmit={handleUploadDoc} className="space-y-6">
-              <div>
-                <label className="block text-label-md text-on-surface-variant mb-2">Category</label>
-                <select
-                  required
-                  value={uploadMainCategory}
-                  onChange={(e) => {
-                    setUploadMainCategory(e.target.value as CategoryGroup);
-                    setUploadSubCategory('');
-                  }}
-                  disabled={company?.entity_type === 'individual'}
-                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white disabled:opacity-70"
-                >
-                  {company?.entity_type === 'individual' ? (
-                    <>
-                      <option value="family">Family / Sponsor Document</option>
-                      <option value="relative">Relative Document</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="company">Company Document</option>
-                      <option value="partner">Partner Document</option>
-                    </>
-                  )}
-                </select>
-              </div>
+              {company?.entity_type !== 'individual' && (
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-2">Category</label>
+                  <select
+                    required
+                    value={uploadMainCategory}
+                    onChange={(e) => {
+                      setUploadMainCategory(e.target.value as CategoryGroup);
+                      setUploadSubCategory('');
+                    }}
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white"
+                  >
+                    <option value="company">Company Document</option>
+                    <option value="partner">Partner Document</option>
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-label-md text-on-surface-variant mb-2">Sub Category</label>
@@ -2444,31 +2436,23 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 />
               </div>
 
-              <div>
-                <label className="block text-label-md text-on-surface-variant mb-1">Category</label>
-                <select
-                  required
-                  value={editMainCategory}
-                  onChange={(e) => {
-                    setEditMainCategory(e.target.value as CategoryGroup);
-                    setEditSubCategory('');
-                  }}
-                  disabled={company?.entity_type === 'individual'}
-                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary disabled:opacity-70"
-                >
-                  {company?.entity_type === 'individual' ? (
-                    <>
-                      <option value="family">Family / Sponsor Document</option>
-                      <option value="relative">Relative Document</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="company">Company Document</option>
-                      <option value="partner">Partner Document</option>
-                    </>
-                  )}
-                </select>
-              </div>
+              {company?.entity_type !== 'individual' && (
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-1">Category</label>
+                  <select
+                    required
+                    value={editMainCategory}
+                    onChange={(e) => {
+                      setEditMainCategory(e.target.value as CategoryGroup);
+                      setEditSubCategory('');
+                    }}
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
+                  >
+                    <option value="company">Company Document</option>
+                    <option value="partner">Partner Document</option>
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-label-md text-on-surface-variant mb-1">Sub Category</label>

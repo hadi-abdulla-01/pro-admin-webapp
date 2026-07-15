@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/providers';
 
 interface SidebarItem {
@@ -14,6 +14,7 @@ interface SidebarItem {
 const sidebarItems: SidebarItem[] = [
   { name: 'Dashboard', href: '/', icon: 'dashboard' },
   { name: 'Companies', href: '/companies', icon: 'business' },
+  { name: 'Families', href: '/companies?filter=family', icon: 'family_restroom' },
   { name: 'Company Groups', href: '/groups', icon: 'corporate_fare' },
   { name: 'Renewals', href: '/renewals', icon: 'event_repeat' },
   { name: 'Notifications', href: '/notifications', icon: 'notifications' },
@@ -23,10 +24,13 @@ const sidebarItems: SidebarItem[] = [
   { name: 'Settings', href: '/settings', icon: 'settings' },
 ];
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+import { Suspense } from 'react';
+
+function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -71,7 +75,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Navigation Tabs */}
         <nav className="flex-1 px-md space-y-1 overflow-y-auto custom-scrollbar">
           {sidebarItems.map((item) => {
-            const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+            let isActive = false;
+            if (item.href.startsWith('/companies') && pathname.startsWith('/companies')) {
+              // Special handling for Companies vs Families
+              const wantsFamily = item.href.includes('filter=family');
+              const currentFilter = searchParams.get('filter');
+              if (wantsFamily) {
+                isActive = currentFilter === 'family';
+              } else {
+                isActive = !currentFilter || currentFilter === '';
+              }
+            } else {
+              isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+            }
             return (
               <Link
                 key={item.name}
@@ -148,5 +164,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
     </div>
+  );
+}
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-body-md font-medium text-secondary">Loading Layout...</p>
+        </div>
+      </div>
+    }>
+      <AdminLayoutInner>{children}</AdminLayoutInner>
+    </Suspense>
   );
 }
