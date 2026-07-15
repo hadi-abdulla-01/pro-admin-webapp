@@ -91,6 +91,10 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [isEditCompanyModalOpen, setIsEditCompanyModalOpen] = useState(false);
   const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+  // Sorting states
+  const [documentsSort, setDocumentsSort] = useState<'alpha' | 'created' | 'expiry'>('alpha');
+  const [employeesSort, setEmployeesSort] = useState<'alpha' | 'created' | 'visa_expiry' | 'passport_expiry'>('alpha');
+  const [empDocsSort, setEmpDocsSort] = useState<'alpha' | 'created' | 'expiry'>('alpha');
 
   const {
     register: registerEmployee,
@@ -463,6 +467,13 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     },
   });
 
+  const sortedEmployees = (employees || []).slice().sort((a: any, b: any) => {
+    if (employeesSort === 'alpha') return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+    if (employeesSort === 'visa_expiry') return (a.visa_expiry ? Date.parse(a.visa_expiry) : 0) - (b.visa_expiry ? Date.parse(b.visa_expiry) : 0);
+    if (employeesSort === 'passport_expiry') return (a.passport_expiry ? Date.parse(a.passport_expiry) : 0) - (b.passport_expiry ? Date.parse(b.passport_expiry) : 0);
+    return (Date.parse(a.created_at || '') || 0) - (Date.parse(b.created_at || '') || 0);
+  });
+
   // Fetch Document Categories
   const { data: categories } = useQuery({
     queryKey: ['document-categories'],
@@ -564,6 +575,19 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         : company?.entity_type === 'individual'
           ? [...(companyDocumentSummary || []), ...(partnerDocumentSummary || [])]
           : documents || [];
+  // Sorting helpers for visible documents
+  const getDocDateValue = (d: any) => {
+    const dateStr = d.uploaded_at || d.created_at || d.issue_date || d.expiry_date;
+    const t = dateStr ? Date.parse(dateStr) : 0;
+    return isNaN(t) ? 0 : t;
+  };
+
+  const sortedVisibleDocuments = (visibleCompanyDocuments || []).slice().sort((a: any, b: any) => {
+    if (documentsSort === 'alpha') return (a.file_name || '').localeCompare(b.file_name || '');
+    if (documentsSort === 'expiry') return (a.expiry_date ? Date.parse(a.expiry_date) : 0) - (b.expiry_date ? Date.parse(b.expiry_date) : 0);
+    // created
+    return (Date.parse(a.uploaded_at || a.created_at || a.issue_date || '') || 0) - (Date.parse(b.uploaded_at || b.created_at || b.issue_date || '') || 0);
+  });
   const documentFilterLabel =
     company?.entity_type === 'individual'
       ? (documentSummaryFilter === 'company'
@@ -851,6 +875,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       return data || [];
     },
     enabled: !!managedEmployee,
+  });
+
+  const sortedEmpDocs = (empDocs || []).slice().sort((a: any, b: any) => {
+    if (empDocsSort === 'alpha') return (a.file_name || '').localeCompare(b.file_name || '');
+    if (empDocsSort === 'expiry') return (a.expiry_date ? Date.parse(a.expiry_date) : 0) - (b.expiry_date ? Date.parse(b.expiry_date) : 0);
+    return (Date.parse(a.uploaded_at || a.created_at || a.issue_date || '') || 0) - (Date.parse(b.uploaded_at || b.created_at || b.issue_date || '') || 0);
   });
 
   // Delete Employee Action
@@ -1290,6 +1320,15 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   )}
                 </div>
                 <div className="flex items-center gap-sm">
+                  <select
+                    value={documentsSort}
+                    onChange={(e) => setDocumentsSort(e.target.value as any)}
+                    className="bg-white border border-border-subtle rounded-lg px-2 py-1 text-xs"
+                  >
+                    <option value="alpha">Alphabetical</option>
+                    <option value="created">Date Created</option>
+                    <option value="expiry">Expiry Date</option>
+                  </select>
                   {documentSummaryFilter !== 'all' && (
                     <button
                       onClick={() => setDocumentSummaryFilter('all')}
@@ -1328,8 +1367,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       <tr>
                         <td colSpan={6} className="p-xl text-center">Loading files...</td>
                       </tr>
-                    ) : visibleCompanyDocuments.length > 0 ? (
-                      visibleCompanyDocuments.map((doc) => {
+                    ) : sortedVisibleDocuments.length > 0 ? (
+                      sortedVisibleDocuments.map((doc) => {
                         const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
                         const isSoon = doc.expiry_date && !isExpired && new Date(doc.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
@@ -1407,12 +1446,24 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 <h3 className="font-title-md text-title-md text-on-surface">
                   {company?.entity_type === 'individual' ? 'Family Members / Relatives' : 'Employee Roster'}
                 </h3>
-                <button
-                  onClick={() => setIsEmployeeModalOpen(true)}
-                  className="px-md py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:brightness-110 cursor-pointer"
-                >
-                  {company?.entity_type === 'individual' ? 'Add Relative' : 'Add Employee'}
-                </button>
+                <div className="flex items-center gap-sm">
+                  <select
+                    value={employeesSort}
+                    onChange={(e) => setEmployeesSort(e.target.value as any)}
+                    className="bg-white border border-border-subtle rounded-lg px-2 py-1 text-xs"
+                  >
+                    <option value="alpha">Alphabetical</option>
+                    <option value="created">Date Created</option>
+                    <option value="visa_expiry">Visa Expiry</option>
+                    <option value="passport_expiry">Passport Expiry</option>
+                  </select>
+                  <button
+                    onClick={() => setIsEmployeeModalOpen(true)}
+                    className="px-md py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:brightness-110 cursor-pointer"
+                  >
+                    {company?.entity_type === 'individual' ? 'Add Relative' : 'Add Employee'}
+                  </button>
+                </div>
               </div>
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full border-collapse text-left text-sm">
@@ -1433,8 +1484,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                           {company?.entity_type === 'individual' ? 'Loading relative list...' : 'Loading employee list...'}
                         </td>
                       </tr>
-                    ) : employees && employees.length > 0 ? (
-                      employees.map((emp) => {
+                    ) : sortedEmployees && sortedEmployees.length > 0 ? (
+                      sortedEmployees.map((emp) => {
                         const isVisaExpired = emp.visa_expiry && new Date(emp.visa_expiry) < new Date();
                         const isPassportExpired = emp.passport_expiry && new Date(emp.passport_expiry) < new Date();
 
@@ -2208,6 +2259,19 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               <div className="md:col-span-2 space-y-4">
                 <h4 className="font-title-md text-title-md text-on-surface">Registered Documents</h4>
 
+                <div className="flex items-center justify-between">
+                  <div />
+                  <select
+                    value={empDocsSort}
+                    onChange={(e) => setEmpDocsSort(e.target.value as any)}
+                    className="bg-white border border-border-subtle rounded-lg px-2 py-1 text-xs"
+                  >
+                    <option value="alpha">Alphabetical</option>
+                    <option value="created">Date Created</option>
+                    <option value="expiry">Expiry Date</option>
+                  </select>
+                </div>
+
                 <div className="border border-border-subtle rounded-xl overflow-hidden bg-bg-subtle">
                   <div className="overflow-x-auto custom-scrollbar max-h-[50vh]">
                     <table className="w-full border-collapse text-left text-xs">
@@ -2224,8 +2288,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                           <tr>
                             <td colSpan={4} className="p-lg text-center">Loading documents...</td>
                           </tr>
-                        ) : empDocs && empDocs.length > 0 ? (
-                          empDocs.map((doc) => {
+                        ) : sortedEmpDocs && sortedEmpDocs.length > 0 ? (
+                          sortedEmpDocs.map((doc) => {
                             const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
                             const isSoon = doc.expiry_date && !isExpired && new Date(doc.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
