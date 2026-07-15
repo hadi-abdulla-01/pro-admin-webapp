@@ -36,8 +36,8 @@ export default function DashboardPage() {
         supabase.from('employee_documents').select('*', { count: 'exact', head: true }).lt('expiry_date', today),
         supabase.from('renewal_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('renewal_requests').select('created_at'),
-        supabase.from('company_documents').select('expiry_date, document_categories(name)').gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),
-        supabase.from('employee_documents').select('expiry_date, document_categories(name)').gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),
+        supabase.from('company_documents').select('id, file_name, expiry_date, document_categories(name), companies(id, name, entity_type)').gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),
+        supabase.from('employee_documents').select('id, file_name, expiry_date, document_categories(name), employees(id, first_name, last_name, companies(id, name, entity_type))').gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),
         supabase.from('company_documents').select('*', { count: 'exact', head: true }),
         supabase.from('employee_documents').select('*', { count: 'exact', head: true }),
       ]);
@@ -65,28 +65,30 @@ export default function DashboardPage() {
         });
       }
 
-      // 2. Generate expiries by category bar chart data
-      const categoryCounts: { [name: string]: number } = {};
-      const allUpcomingDocs = [...(expiringCompDocs || []), ...(expiringEmpDocs || [])];
-      allUpcomingDocs.forEach((doc: any) => {
-        const catName = doc.document_categories?.name || 'Other';
-        categoryCounts[catName] = (categoryCounts[catName] || 0) + 1;
-      });
-
-      const categoriesData = Object.entries(categoryCounts).map(([name, value]) => ({
-        name,
-        value,
-        max: Math.max(value * 2, 10), // scale bounds
-      }));
-
-      // Default visual categories to show if there are 0 expiries
-      if (categoriesData.length === 0) {
-        categoriesData.push(
-          { name: 'Trade Licenses', value: 0, max: 10 },
-          { name: 'Resident Visas', value: 0, max: 10 },
-          { name: 'Establishment Cards', value: 0, max: 10 }
-        );
-      }
+      // 2. Format upcoming expiries list
+      const upcomingExpiriesList = [
+        ...(expiringCompDocs || []).map((doc: any) => ({
+          id: doc.id,
+          file_name: doc.file_name,
+          expiry_date: doc.expiry_date,
+          category_name: doc.document_categories?.name || 'Unknown Category',
+          entity_name: doc.companies?.name || 'Unknown Entity',
+          entity_id: doc.companies?.id,
+          entity_type: doc.companies?.entity_type,
+          is_employee: false,
+        })),
+        ...(expiringEmpDocs || []).map((doc: any) => ({
+          id: doc.id,
+          file_name: doc.file_name,
+          expiry_date: doc.expiry_date,
+          category_name: doc.document_categories?.name || 'Unknown Category',
+          entity_name: doc.employees?.companies?.name || 'Unknown Entity',
+          entity_id: doc.employees?.companies?.id,
+          entity_type: doc.employees?.companies?.entity_type,
+          employee_name: `${doc.employees?.first_name || ''} ${doc.employees?.last_name || ''}`.trim(),
+          is_employee: true,
+        }))
+      ].sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
 
       // 3. Calculate dynamic compliance rate
       const totalDocs = (totalCompDocs || 0) + (totalEmpDocs || 0);
@@ -100,7 +102,7 @@ export default function DashboardPage() {
         expiredCount: expiredCount || 0,
         activeRenewals: activeRenewals || 0,
         trendData: last6Months,
-        categoriesData,
+        upcomingExpiriesList,
         complianceRate,
       };
     },
@@ -254,29 +256,55 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Expiries by Category Bar Chart */}
+              {/* Upcoming Expiries List */}
               <div className="bg-white p-lg rounded-2xl border border-border-subtle shadow-sm flex flex-col h-[280px]">
-                <div className="flex justify-between items-center mb-lg">
-                  <h3 className="font-title-md text-title-md text-on-surface">Upcoming Expiries by Category</h3>
-                  <button className="text-on-surface-variant hover:text-primary">
+                <div className="flex justify-between items-center mb-md">
+                  <h3 className="font-title-md text-title-md text-on-surface">Upcoming Expiries</h3>
+                  <button className="text-on-surface-variant hover:text-primary transition-colors">
                     <span className="material-symbols-outlined">filter_list</span>
                   </button>
                 </div>
-                <div className="space-y-4 flex-1 overflow-y-auto">
-                  {(stats?.categoriesData || []).map((cat) => {
-                    const percentage = (cat.value / cat.max) * 100;
-                    return (
-                      <div key={cat.name} className="space-y-1">
-                        <div className="flex justify-between text-label-sm text-on-surface-variant">
-                          <span>{cat.name}</span>
-                          <span className="font-bold">{cat.value}</span>
+                <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                  {stats?.upcomingExpiriesList && stats.upcomingExpiriesList.length > 0 ? (
+                    stats.upcomingExpiriesList.map((doc: any) => {
+                      const isIndividual = doc.entity_type === 'individual';
+                      const entityIcon = isIndividual ? 'person' : 'business';
+                      const entityColor = isIndividual ? 'text-accent bg-accent/10' : 'text-primary bg-primary/10';
+                      
+                      return (
+                        <div key={doc.id} className="p-3 bg-surface border border-border-subtle rounded-lg flex justify-between items-center hover:border-primary/30 transition-colors">
+                          <div className="flex items-start gap-3 overflow-hidden">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${entityColor}`}>
+                              <span className="material-symbols-outlined text-[16px]">{entityIcon}</span>
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-bold text-on-surface truncate">{doc.entity_name}</span>
+                              <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                                <span className="truncate">{doc.category_name}</span>
+                                {doc.is_employee && (
+                                  <>
+                                    <span className="w-1 h-1 rounded-full bg-border-subtle shrink-0"></span>
+                                    <span className="truncate">{doc.employee_name}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end shrink-0 pl-2">
+                            <span className="text-xs font-bold text-warning">
+                              {new Date(doc.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </span>
+                            <span className="text-[10px] text-on-surface-variant font-medium">Expiry</span>
+                          </div>
                         </div>
-                        <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                          <div className="h-full bg-primary-container rounded-full" style={{ width: `${percentage}%` }}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-on-surface-variant space-y-2">
+                      <span className="material-symbols-outlined text-4xl opacity-20">task_alt</span>
+                      <p className="text-sm">No upcoming expiries</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

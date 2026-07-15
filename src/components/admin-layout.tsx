@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers';
 
 interface SidebarItem {
@@ -30,7 +30,6 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {

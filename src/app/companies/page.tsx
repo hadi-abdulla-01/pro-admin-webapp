@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin-layout';
@@ -172,13 +172,27 @@ export default function CompaniesPage() {
     addCompanyMutation.mutate(data);
   };
 
-  // Filter & Search Logic
+  const [entityFilter, setEntityFilter] = useState<'all' | 'family'>('all');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      setEntityFilter(params.get('filter') === 'family' ? 'family' : 'all');
+    }
+  }, []);
+
   const filteredCompanies = (companies || []).filter((company) => {
     const matchesSearch = company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (company.trade_license_number && company.trade_license_number.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = statusFilter === 'all' || company.status === statusFilter;
-    const matchesEntity = company.entity_type === 'corporate';
+    let matchesEntity = true;
+    if (entityFilter === 'family') {
+      matchesEntity = company.entity_type === 'individual';
+    } else {
+      // Default Companies tab should show only corporate entities
+      matchesEntity = company.entity_type === 'corporate';
+    }
 
     return matchesSearch && matchesStatus && matchesEntity;
   });
@@ -368,7 +382,16 @@ export default function CompaniesPage() {
               </div>
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                <input type="hidden" value="corporate" {...register('entity_type')} />
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-2">Entity Type</label>
+                  <select
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary focus:outline-none"
+                    {...register('entity_type')}
+                  >
+                    <option value="corporate">Corporate Business</option>
+                    <option value="individual">Individual / Family</option>
+                  </select>
+                </div>
 
                 <div>
                   <label className="block text-label-md text-on-surface-variant mb-2">
