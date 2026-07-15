@@ -1914,8 +1914,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
 
-              <hr className="border-border-subtle my-4" />
-              <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Government IDs & Expiries</h4>
+
 
 
 

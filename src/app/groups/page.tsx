@@ -20,6 +20,7 @@ export default function GroupsPage() {
   const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [selectedGroupDetails, setSelectedGroupDetails] = useState<any | null>(null);
 
   const {
@@ -90,8 +91,46 @@ export default function GroupsPage() {
     },
   });
 
+  // Update Group Mutation
+  const updateGroupMutation = useMutation({
+    mutationFn: async (newData: { id: string; name: string }) => {
+      const { data, error } = await supabase
+        .from('company_groups')
+        .update({ name: newData.name })
+        .eq('id', newData.id)
+        .select();
+
+      if (error) throw error;
+
+      // Log activity
+      await supabase.from('activity_logs').insert([
+        {
+          user_id: profile?.id || null,
+          action: 'UPDATE_COMPANY_GROUP',
+          details: `Updated company group name to: ${newData.name}`,
+        },
+      ]);
+
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['company-groups'] });
+      // Update selectedGroupDetails if it's the one being edited
+      if (selectedGroupDetails && data && data[0]?.id === selectedGroupDetails.id) {
+        setSelectedGroupDetails({ ...selectedGroupDetails, name: data[0].name });
+      }
+      setIsModalOpen(false);
+      setEditingGroupId(null);
+      reset();
+    },
+  });
+
   const onSubmit = (data: GroupFormFields) => {
-    addGroupMutation.mutate(data);
+    if (editingGroupId) {
+      updateGroupMutation.mutate({ id: editingGroupId, name: data.name });
+    } else {
+      addGroupMutation.mutate(data);
+    }
   };
 
   const filteredGroups = (groups || []).filter((g) =>
@@ -108,7 +147,11 @@ export default function GroupsPage() {
             <p className="font-body-md text-body-md text-on-surface-variant">Create and manage multi-company groups to enable combined client logins.</p>
           </div>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingGroupId(null);
+              reset({ name: '' });
+              setIsModalOpen(true);
+            }}
             className="px-md py-2 bg-primary text-white rounded-lg font-label-md text-label-md hover:bg-primary/90 transition-all flex items-center gap-2"
           >
             <span className="material-symbols-outlined text-[16px]">add</span>
@@ -189,6 +232,16 @@ export default function GroupsPage() {
                             </button>
                             <button
                               onClick={() => {
+                                setEditingGroupId(group.id);
+                                reset({ name: group.name });
+                                setIsModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 border border-border-subtle text-on-surface rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
                                 if (confirm(`Are you sure you want to delete group "${group.name}"? This will unassign any associated companies.`)) {
                                   deleteGroupMutation.mutate(group.id);
                                 }
@@ -248,10 +301,11 @@ export default function GroupsPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-md shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-150">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-title-lg font-bold text-on-surface">Add New Group</h3>
+                <h3 className="text-title-lg font-bold text-on-surface">{editingGroupId ? 'Edit Group' : 'Add New Group'}</h3>
                 <button
                   onClick={() => {
                     setIsModalOpen(false);
+                    setEditingGroupId(null);
                     reset();
                   }}
                   className="p-1 rounded-full hover:bg-surface-container transition-colors"
@@ -279,6 +333,7 @@ export default function GroupsPage() {
                     type="button"
                     onClick={() => {
                       setIsModalOpen(false);
+                      setEditingGroupId(null);
                       reset();
                     }}
                     className="px-lg py-2 bg-white border border-border-subtle rounded-lg text-body-sm font-semibold hover:bg-surface-container-low transition-colors"
@@ -287,10 +342,12 @@ export default function GroupsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={addGroupMutation.isPending}
+                    disabled={addGroupMutation.isPending || updateGroupMutation.isPending}
                     className="px-lg py-2 bg-primary text-white rounded-lg text-body-sm font-semibold hover:brightness-110 disabled:bg-primary/50 disabled:cursor-not-allowed transition-all"
                   >
-                    {addGroupMutation.isPending ? 'Creating...' : 'Create Group'}
+                    {editingGroupId 
+                      ? (updateGroupMutation.isPending ? 'Saving...' : 'Save Changes') 
+                      : (addGroupMutation.isPending ? 'Creating...' : 'Create Group')}
                   </button>
                 </div>
               </form>
