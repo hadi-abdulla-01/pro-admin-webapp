@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin-layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -29,24 +29,27 @@ export default function SettingsPage() {
   });
 
   // Fetch App Settings
-  const { isLoading: isSettingsLoading } = useQuery({
+  const { data: settingsData, isLoading: isSettingsLoading } = useQuery({
     queryKey: ['app-settings'],
     queryFn: async () => {
       const { data, error } = await supabase.from('app_settings').select('*');
       if (error && error.code !== 'PGRST205') throw error; // Ignore if table doesn't exist yet
-      
-      if (data) {
-        data.forEach(setting => {
-          if (setting.key === 'support_whatsapp') setWhatsappNum(setting.value);
-          if (setting.key === 'support_phone') setPhoneNum(setting.value);
-          if (setting.key === 'system_name') setSysName(setting.value);
-          if (setting.key === 'alert_email') setAlertEmail(setting.value);
-          if (setting.key === 'grace_period') setGracePeriod(parseInt(setting.value) || 30);
-        });
-      }
       return data || [];
     },
   });
+
+  // Sync settings data to local state when fetched
+  useEffect(() => {
+    if (settingsData && settingsData.length > 0) {
+      settingsData.forEach(setting => {
+        if (setting.key === 'support_whatsapp') setWhatsappNum(setting.value);
+        if (setting.key === 'support_phone') setPhoneNum(setting.value);
+        if (setting.key === 'system_name') setSysName(setting.value);
+        if (setting.key === 'alert_email') setAlertEmail(setting.value);
+        if (setting.key === 'grace_period') setGracePeriod(parseInt(setting.value) || 30);
+      });
+    }
+  }, [settingsData]);
 
   const saveSettingsMutation = useMutation({
     mutationFn: async () => {
