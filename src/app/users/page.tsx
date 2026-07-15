@@ -79,15 +79,20 @@ export default function UsersRolesPage() {
     if (!newName || !newEmail || !newPassword) return;
     setIsCreating(true);
     try {
-      const { error } = await supabase.rpc('create_new_auth_user', {
-        p_email: newEmail,
-        p_password: newPassword,
-        p_name: newName,
-        p_role: newRole,
-        p_company_id: newRole === 'client' && newCompanyId ? newCompanyId : null,
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          p_email: newEmail,
+          p_password: newPassword,
+          p_name: newName,
+          p_role: newRole,
+          p_company_id: newRole === 'client' && newCompanyId ? newCompanyId : null,
+        }),
       });
 
-      if (error) throw error;
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to create user');
 
       queryClient.invalidateQueries({ queryKey: ['all-users'] });
       setIsAddModalOpen(false);
