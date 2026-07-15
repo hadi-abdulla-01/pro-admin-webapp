@@ -1,6 +1,6 @@
 'use client';
 
-import React, { use, useState } from 'react';
+import React, { use, useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin-layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -73,10 +73,12 @@ type CompanyDocumentRow = {
   document_categories?: {
     name?: string | null;
     code?: string | null;
+    category_group?: string | null;
   } | null;
 };
 
 type DocumentSummaryFilter = 'all' | 'company' | 'partner';
+type CategoryGroup = 'company' | 'partner' | 'employee' | 'family' | 'relative';
 
 export default function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: companyId } = use(params);
@@ -292,13 +294,10 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     setEditDocName(doc.file_name);
     setEditDocIssue(doc.issue_date || '');
     setEditDocExpiry(doc.expiry_date || '');
-    
-    // Check if category is partner/sponsor category
-    const isPartner = doc.document_categories ? partnerDocumentKeywords.some((keyword) =>
-      (doc.document_categories.name + ' ' + (doc.document_categories.code || '')).toLowerCase().includes(keyword)
-    ) : false;
-    
-    setEditMainCategory(isPartner ? 'partner' : 'company');
+
+    // Use category_group from DB directly (no keyword matching needed)
+    const group = doc.document_categories?.category_group as CategoryGroup | undefined;
+    setEditMainCategory(group ?? (company?.entity_type === 'individual' ? 'family' : 'company'));
     setEditSubCategory(doc.category_id || '');
     setEditCustomCategoryName('');
     setIsEditDocModalOpen(true);
@@ -310,7 +309,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     setEditEmpDocName(doc.file_name);
     setEditEmpDocIssue(doc.issue_date || '');
     setEditEmpDocExpiry(doc.expiry_date || '');
-    setEditEmpDocCategory(doc.category_id || '');
+    setEditEmpDocCategory(doc.category_id || ''); // always use id directly
     setIsEditEmpDocModalOpen(true);
   };
 
@@ -424,11 +423,26 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     queryFn: async () => {
       const { data, error } = await supabase
         .from('company_documents')
-        .select('*, document_categories(name, code)')
+        .select('*, document_categories(name, code, category_group)')
         .eq('company_id', companyId);
       if (error) throw error;
       return data || [];
     },
+  });
+
+  // Fetch Employee (relative) Documents for this company (used for individual/family summaries)
+  const { data: employeeCompanyDocs } = useQuery({
+    queryKey: ['company-employee-documents', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employee_documents')
+        .select('*, employees(first_name, last_name, company_id), document_categories(name, code, category_group)')
+        .eq('employees.company_id', companyId)
+        .order('uploaded_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!companyId,
   });
 
   // Fetch Company Employees
@@ -472,29 +486,10 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     },
   });
 
-  const partnerDocumentKeywords = [
-    'partner',
-    'sponsor',
-    'shareholder',
-    'owner',
-    'passport',
-    'visa',
-    'eid',
-    'emirates id',
-    'emirates-id',
-    'resident',
-    'residence',
-    'residency',
-  ];
-
+  // Use category_group from DB for partner/family detection (no keyword matching needed)
   const isPartnerDocument = (doc: CompanyDocumentRow) => {
-    const searchableText = [
-      doc.file_name,
-      doc.document_categories?.name,
-      doc.document_categories?.code,
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return partnerDocumentKeywords.some((keyword) => searchableText.includes(keyword));
+    const grp = doc.document_categories?.category_group;
+    return grp === 'partner';
   };
 
   const getDocumentStatusCounts = (docs: CompanyDocumentRow[]) => {
@@ -536,24 +531,45 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       .map(([name, count]) => ({ name, count }));
   };
 
-  const companyDocumentSummary = (documents || []).filter((doc) => !isPartnerDocument(doc));
-  const partnerDocumentSummary = (documents || []).filter(isPartnerDocument);
+  // For individual entities: family docs are the employee (relative) documents; sponsor docs are partner-type company documents.
+  let companyDocumentSummary: any[] = [];
+  let partnerDocumentSummary: any[] = [];
+
+  if (company?.entity_type === 'individual') {
+    const familyDocs = (employeeCompanyDocs || []).filter((d: any) => d.document_categories?.category_group === 'relative');
+    const sponsorDocs = (documents || []).filter((d: any) => d.document_categories?.category_group === 'partner');
+    companyDocumentSummary = familyDocs;
+    partnerDocumentSummary = sponsorDocs;
+  } else {
+    companyDocumentSummary = (documents || []).filter((doc) => !isPartnerDocument(doc));
+    partnerDocumentSummary = (documents || []).filter(isPartnerDocument);
+  }
+
   const companyDocumentStatusCounts = getDocumentStatusCounts(companyDocumentSummary);
   const partnerDocumentStatusCounts = getDocumentStatusCounts(partnerDocumentSummary);
   const companyDocumentCategories = getTopDocumentCategories(companyDocumentSummary);
   const partnerDocumentCategories = getTopDocumentCategories(partnerDocumentSummary);
+
   const visibleCompanyDocuments =
     documentSummaryFilter === 'company'
       ? companyDocumentSummary
       : documentSummaryFilter === 'partner'
         ? partnerDocumentSummary
-        : documents || [];
+        : company?.entity_type === 'individual'
+          ? [...(companyDocumentSummary || []), ...(partnerDocumentSummary || [])]
+          : documents || [];
   const documentFilterLabel =
-    documentSummaryFilter === 'company'
-      ? 'Company Documents'
-      : documentSummaryFilter === 'partner'
-        ? 'Partner Documents'
-        : 'All Company Documents';
+    company?.entity_type === 'individual'
+      ? (documentSummaryFilter === 'company'
+          ? 'Family Documents'
+          : documentSummaryFilter === 'partner'
+            ? 'Sponsor Documents'
+            : 'All Documents')
+      : (documentSummaryFilter === 'company'
+          ? 'Company Documents'
+          : documentSummaryFilter === 'partner'
+            ? 'Partner Documents'
+            : 'All Company Documents');
 
   // Add Employee Mutation
   const addEmployeeMutation = useMutation({
@@ -599,18 +615,43 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   });
 
   // Document Upload & Category States
-  const [uploadMainCategory, setUploadMainCategory] = useState<'company' | 'partner'>('company');
+  const [uploadMainCategory, setUploadMainCategory] = useState<CategoryGroup>('company');
   const [uploadSubCategory, setUploadSubCategory] = useState('');
   const [uploadCustomCategoryName, setUploadCustomCategoryName] = useState('');
-  const [editMainCategory, setEditMainCategory] = useState<'company' | 'partner'>('company');
+  const [editMainCategory, setEditMainCategory] = useState<CategoryGroup>('company');
   const [editSubCategory, setEditSubCategory] = useState('');
   const [editCustomCategoryName, setEditCustomCategoryName] = useState('');
-  
+
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadIssue, setUploadIssue] = useState('');
   const [uploadExpiry, setUploadExpiry] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // When company type changes, default/lock main categories for individual entities
+  useEffect(() => {
+    if (!company) return;
+    if (company.entity_type === 'individual') {
+      setUploadMainCategory('family');
+      setEditMainCategory('family');
+    } else {
+      setUploadMainCategory('company');
+      setEditMainCategory('company');
+    }
+  }, [company?.entity_type]);
+
+  // Helper: create a new custom category and return its id
+  const createCustomCategory = async (name: string, group: CategoryGroup): Promise<string> => {
+    const type = (group === 'company' || group === 'partner' || group === 'family') ? 'company' : 'employee';
+    const code = name.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_CUSTOM_' + Date.now();
+    const { data, error } = await supabase
+      .from('document_categories')
+      .insert([{ name, code, type, category_group: group }])
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data.id;
+  };
 
   // Upload Document Action
   const handleUploadDoc = async (e: React.FormEvent) => {
@@ -619,7 +660,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       alert('Please select a file and a category.');
       return;
     }
-    
+
     if (uploadSubCategory === 'other' && !uploadCustomCategoryName.trim()) {
       alert('Please enter a custom category name.');
       return;
@@ -629,22 +670,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
     try {
       let finalCategoryId = uploadSubCategory;
-      
-      // If "Others" is selected, create new category in document_categories first
+
       if (uploadSubCategory === 'other') {
-        const customName = uploadCustomCategoryName.trim();
-        const customCode = customName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-        
-        const { data: newCat, error: catError } = await supabase
-          .from('document_categories')
-          .insert([
-            { name: customName, code: customCode, type: 'company' }
-          ])
-          .select()
-          .single();
-          
-        if (catError) throw catError;
-        finalCategoryId = newCat.id;
+        finalCategoryId = await createCustomCategory(uploadCustomCategoryName.trim(), uploadMainCategory);
       }
 
       const fileName = uploadFileName || selectedFile.name;
@@ -763,7 +791,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       if (!managedEmployee) return [];
       const { data, error } = await supabase
         .from('employee_documents')
-        .select('*, document_categories(name)')
+        .select('*, document_categories(name, category_group)')
         .eq('employee_id', managedEmployee.id)
         .order('uploaded_at', { ascending: false });
       if (error) throw error;
@@ -794,6 +822,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     setIsUploadingEmpDoc(true);
 
     try {
+      const finalCategoryId = empDocCategory; // always a valid category_id from DB selector
       const fileName = empDocFileName || empDocFile.name;
       const cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
       const filePath = `${managedEmployee.id}/${Date.now()}_${cleanFileName}`;
@@ -812,7 +841,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       const { error: dbError } = await supabase.from('employee_documents').insert([
         {
           employee_id: managedEmployee.id,
-          category_id: empDocCategory,
+          category_id: finalCategoryId,
           file_name: fileName,
           file_path: filePath,
           size_bytes: empDocFile.size,
@@ -842,7 +871,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       setEmpDocIssue('');
       setEmpDocExpiry('');
       setEmpDocFile(null);
-      
+
       const fileInput = document.getElementById('emp-file-input') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     } catch (err: any) {
@@ -929,9 +958,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
           <div>
             <div className="flex items-center gap-md mb-xs">
               <h1 className="font-display text-display text-on-surface text-3xl font-extrabold">{company.name}</h1>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                company.status === 'active' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
-              }`}>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${company.status === 'active' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
+                }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${company.status === 'active' ? 'bg-success' : 'bg-danger'}`}></span>
                 {company.status === 'active' ? 'Active' : 'Disabled'}
               </span>
@@ -939,7 +967,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
           </div>
           <div className="flex gap-md">
             <button
-              onClick={() => setIsDocModalOpen(true)}
+              onClick={() => {
+                if (company?.entity_type === 'individual') {
+                  setUploadMainCategory(documentSummaryFilter === 'partner' ? 'partner' : 'family');
+                }
+                setIsDocModalOpen(true);
+              }}
               className="flex items-center gap-2 px-md py-2 bg-white border border-border-subtle rounded-lg font-label-md text-label-md text-on-surface hover:bg-surface-container-low transition-all text-xs font-semibold cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">upload</span>
@@ -973,14 +1006,13 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 }
                 setActiveTab(tab);
               }}
-              className={`pb-md font-body-md text-sm capitalize transition-all cursor-pointer ${
-                activeTab === tab
+              className={`pb-md font-body-md text-sm capitalize transition-all cursor-pointer ${activeTab === tab
                   ? 'text-primary font-bold border-b-2 border-primary'
                   : 'text-on-surface-variant hover:text-primary'
-              }`}
+                }`}
             >
-              {tab === 'employees' 
-                ? (company?.entity_type === 'individual' ? 'Family Members' : 'Employees') 
+              {tab === 'employees'
+                ? (company?.entity_type === 'individual' ? 'Family Members' : 'Employees')
                 : tab}
             </button>
           ))}
@@ -1094,8 +1126,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       {company?.entity_type === 'individual' ? 'Family Documents' : 'Company Documents'}
                     </h4>
                     <p className="text-xs text-on-surface-variant mb-md">
-                      {company?.entity_type === 'individual' 
-                        ? 'Passport, visa, Emirates ID and personal records' 
+                      {company?.entity_type === 'individual'
+                        ? 'Passport, visa, Emirates ID and personal records'
                         : 'TL, MOA, POA, certificates and establishment records'}
                     </p>
                     <div className="flex flex-wrap gap-2 mb-md">
@@ -1214,7 +1246,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     </button>
                   )}
                   <button
-                    onClick={() => setIsDocModalOpen(true)}
+                    onClick={() => {
+                      if (company?.entity_type === 'individual') {
+                        setUploadMainCategory(documentSummaryFilter === 'partner' ? 'partner' : 'family');
+                      }
+                      setIsDocModalOpen(true);
+                    }}
                     className="px-md py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:brightness-110 cursor-pointer"
                   >
                     Upload New Document
@@ -1246,7 +1283,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         return (
                           <tr key={doc.id} className="hover:bg-surface-container-lowest transition-colors">
                             <td className="p-lg font-bold">{doc.file_name}</td>
-                            <td className="p-lg text-on-surface-variant font-medium">{doc.document_categories?.name || 'Other'}</td>
+                            <td className="p-lg text-on-surface-variant font-medium">
+                              {doc.document_categories?.name || 'Other'}
+                            </td>
                             <td className="p-lg text-on-surface-variant">{(doc.size_bytes / (1024 * 1024)).toFixed(2)} MB</td>
                             <td className="p-lg">
                               <div className="flex flex-col text-xs text-on-surface-variant font-medium">
@@ -1257,24 +1296,22 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                               </div>
                             </td>
                             <td className="p-lg">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                isExpired ? 'bg-danger/10 text-danger' : isSoon ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
-                              }`}>
-                                <span className={`w-1 h-1 rounded-full ${
-                                  isExpired ? 'bg-danger' : isSoon ? 'bg-warning' : 'bg-success'
-                                }`}></span>
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${isExpired ? 'bg-danger/10 text-danger' : isSoon ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
+                                }`}>
+                                <span className={`w-1 h-1 rounded-full ${isExpired ? 'bg-danger' : isSoon ? 'bg-warning' : 'bg-success'
+                                  }`}></span>
                                 {isExpired ? 'Expired' : isSoon ? 'Expiring Soon' : 'Active'}
                               </span>
                             </td>
                             <td className="p-lg text-right space-x-2">
                               <button
-                                onClick={() => handleViewDoc(doc.file_path)}
+                                onClick={() => doc.employee_id ? handleViewEmpDoc(doc.file_path) : handleViewDoc(doc.file_path)}
                                 className="px-2.5 py-1 text-xs font-semibold border border-border-subtle text-primary rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
                               >
                                 Open
                               </button>
                               <button
-                                onClick={() => handleOpenEditDocModal(doc)}
+                                onClick={() => doc.employee_id ? handleOpenEditEmpDocModal(doc) : handleOpenEditDocModal(doc)}
                                 className="px-2.5 py-1 text-xs font-semibold border border-border-subtle text-on-surface rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
                               >
                                 Edit
@@ -1282,7 +1319,11 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                               <button
                                 onClick={() => {
                                   if (confirm('Are you sure you want to delete this document?')) {
-                                    deleteDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
+                                    if (doc.employee_id) {
+                                      deleteEmpDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
+                                    } else {
+                                      deleteDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
+                                    }
                                   }
                                 }}
                                 className="px-2.5 py-1 text-xs font-semibold border border-danger/20 text-danger rounded-lg hover:bg-danger/5 transition-colors cursor-pointer"
@@ -1359,9 +1400,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                               </span>
                             </td>
                             <td className="p-lg text-center">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                emp.status === 'active' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
-                              }`}>
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${emp.status === 'active' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
+                                }`}>
                                 <span className={`w-1 h-1 rounded-full ${emp.status === 'active' ? 'bg-success' : 'bg-danger'}`}></span>
                                 {emp.status}
                               </span>
@@ -1437,13 +1477,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         </td>
                         <td className="p-lg max-w-xs truncate text-on-surface-variant">{req.details}</td>
                         <td className="p-lg text-center">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            req.status === 'pending'
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${req.status === 'pending'
                               ? 'bg-warning/10 text-warning'
                               : req.status === 'approved'
-                              ? 'bg-success/10 text-success'
-                              : 'bg-danger/10 text-danger'
-                          }`}>
+                                ? 'bg-success/10 text-success'
+                                : 'bg-danger/10 text-danger'
+                            }`}>
                             {req.status}
                           </span>
                         </td>
@@ -1858,17 +1897,23 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   required
                   value={uploadMainCategory}
                   onChange={(e) => {
-                    setUploadMainCategory(e.target.value as any);
+                    setUploadMainCategory(e.target.value as CategoryGroup);
                     setUploadSubCategory('');
                   }}
-                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white"
+                  disabled={company?.entity_type === 'individual'}
+                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white disabled:opacity-70"
                 >
-                  <option value="company">
-                    {company?.entity_type === 'individual' ? 'Family Document' : 'Company Document'}
-                  </option>
-                  <option value="partner">
-                    {company?.entity_type === 'individual' ? 'Sponsor Document' : 'Partner Document'}
-                  </option>
+                  {company?.entity_type === 'individual' ? (
+                    <>
+                      <option value="family">Family / Sponsor Document</option>
+                      <option value="relative">Relative Document</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="company">Company Document</option>
+                      <option value="partner">Partner Document</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -1881,25 +1926,14 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white"
                 >
                   <option value="">Select sub category...</option>
-                  {(() => {
-                    const filtered = categories?.filter((cat) => {
-                      if (cat.type !== 'company' && cat.type) return false;
-                      const isPartner = partnerDocumentKeywords.some((keyword) =>
-                        (cat.name + ' ' + (cat.code || '')).toLowerCase().includes(keyword)
-                      );
-                      return uploadMainCategory === 'partner' ? isPartner : !isPartner;
-                    });
-                    return (
-                      <>
-                        {filtered?.map((cat) => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </option>
-                        ))}
-                        <option value="other">Others (Create New Category)</option>
-                      </>
-                    );
-                  })()}
+                  {categories
+                    ?.filter((cat) => cat.category_group === uploadMainCategory)
+                    .map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  <option value="other">Others (Create New Category)</option>
                 </select>
               </div>
 
@@ -2015,10 +2049,10 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               {/* Upload Form Column */}
               <div className="md:col-span-1 border-r border-border-subtle pr-md space-y-4">
                 <h4 className="font-title-md text-title-md text-on-surface">Upload Document</h4>
-                
+
                 <form onSubmit={handleUploadEmpDoc} className="space-y-4">
                   <div>
-                    <label className="block text-label-sm text-on-surface-variant mb-1">Document Category</label>
+                    <label className="block text-label-sm text-on-surface-variant mb-1">Document Type</label>
                     <select
                       required
                       value={empDocCategory}
@@ -2026,11 +2060,15 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       className="w-full px-3 py-1.5 border border-border-subtle rounded-lg text-xs bg-white"
                     >
                       <option value="">Select category...</option>
-                      {categories?.filter((cat) => cat.type === 'employee').map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
+                      {categories
+                        ?.filter((cat) =>
+                          cat.category_group === (company?.entity_type === 'individual' ? 'relative' : 'employee')
+                        )
+                        .map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
                     </select>
                   </div>
 
@@ -2209,19 +2247,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
                 try {
                   if (editSubCategory === 'other') {
-                    const customName = editCustomCategoryName.trim();
-                    const customCode = customName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-                    
-                    const { data: newCat, error: catError } = await supabase
-                      .from('document_categories')
-                      .insert([
-                        { name: customName, code: customCode, type: 'company' }
-                      ])
-                      .select()
-                      .single();
-                      
-                    if (catError) throw catError;
-                    finalCategoryId = newCat.id;
+                    finalCategoryId = await createCustomCategory(editCustomCategoryName.trim(), editMainCategory);
                   }
 
                   updateDocMutation.mutate({
@@ -2254,17 +2280,23 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   required
                   value={editMainCategory}
                   onChange={(e) => {
-                    setEditMainCategory(e.target.value as any);
+                    setEditMainCategory(e.target.value as CategoryGroup);
                     setEditSubCategory('');
                   }}
-                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
+                  disabled={company?.entity_type === 'individual'}
+                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary disabled:opacity-70"
                 >
-                  <option value="company">
-                    {company?.entity_type === 'individual' ? 'Family Document' : 'Company Document'}
-                  </option>
-                  <option value="partner">
-                    {company?.entity_type === 'individual' ? 'Sponsor Document' : 'Partner Document'}
-                  </option>
+                  {company?.entity_type === 'individual' ? (
+                    <>
+                      <option value="family">Family / Sponsor Document</option>
+                      <option value="relative">Relative Document</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="company">Company Document</option>
+                      <option value="partner">Partner Document</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -2277,25 +2309,14 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
                 >
                   <option value="">Select sub category...</option>
-                  {(() => {
-                    const filtered = categories?.filter((cat) => {
-                      if (cat.type !== 'company' && cat.type) return false;
-                      const isPartner = partnerDocumentKeywords.some((keyword) =>
-                        (cat.name + ' ' + (cat.code || '')).toLowerCase().includes(keyword)
-                      );
-                      return editMainCategory === 'partner' ? isPartner : !isPartner;
-                    });
-                    return (
-                      <>
-                        {filtered?.map((cat) => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </option>
-                        ))}
-                        <option value="other">Others (Create New Category)</option>
-                      </>
-                    );
-                  })()}
+                  {categories
+                    ?.filter((cat) => cat.category_group === editMainCategory)
+                    .map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  <option value="other">Others (Create New Category)</option>
                 </select>
               </div>
 
@@ -2376,14 +2397,14 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 updateEmpDocMutation.mutate({
                   id: editingEmpDoc.id,
                   file_name: editEmpDocName,
                   issue_date: editEmpDocIssue || null,
                   expiry_date: editEmpDocExpiry || null,
-                  category_id: editEmpDocCategory,
+                  category_id: editEmpDocCategory, // always a valid category_id from DB selector
                 });
               }}
               className="space-y-4"
@@ -2400,18 +2421,23 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               </div>
 
               <div>
-                <label className="block text-label-md text-on-surface-variant mb-1">Document Category</label>
+                <label className="block text-label-md text-on-surface-variant mb-1">Document Type</label>
                 <select
                   required
                   value={editEmpDocCategory}
                   onChange={(e) => setEditEmpDocCategory(e.target.value)}
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
                 >
-                  {categories?.filter((cat) => cat.type === 'employee').map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
+                  <option value="">Select category...</option>
+                  {categories
+                    ?.filter((cat) =>
+                      cat.category_group === (company?.entity_type === 'individual' ? 'relative' : 'employee')
+                    )
+                    .map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 
