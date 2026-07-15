@@ -11,18 +11,34 @@ import Link from 'next/link';
 import { useAuth } from '@/components/providers';
 
 const companySchema = zod.object({
-  name: zod.string().min(2, { message: 'Company name must be at least 2 characters' }),
-  trade_license_number: zod.string().min(2, { message: 'Trade license is required' }),
+  name: zod.string().min(2, { message: 'Name must be at least 2 characters' }),
+  entity_type: zod.enum(['corporate', 'individual']),
+  trade_license_number: zod.string().optional(),
   trade_license_issue: zod.string().refine((val) => !val || !isNaN(Date.parse(val)), {
     message: 'Valid issue date is required',
   }).optional(),
-  trade_license_expiry: zod.string().refine((val) => !isNaN(Date.parse(val)), {
-    message: 'Valid expiry date is required',
-  }),
+  trade_license_expiry: zod.string().optional(),
   logo_url: zod.string().url().or(zod.string().length(0)).optional(),
   email: zod.string().email({ message: 'Invalid email address' }).or(zod.string().length(0)).optional(),
   phone: zod.string().or(zod.string().length(0)).optional(),
   group_id: zod.string().or(zod.string().length(0)).optional(),
+}).superRefine((data, ctx) => {
+  if (data.entity_type === 'corporate') {
+    if (!data.trade_license_number || data.trade_license_number.trim().length < 2) {
+      ctx.addIssue({
+        code: zod.ZodIssueCode.custom,
+        path: ['trade_license_number'],
+        message: 'Trade license is required for corporate entities',
+      });
+    }
+    if (!data.trade_license_expiry || isNaN(Date.parse(data.trade_license_expiry))) {
+      ctx.addIssue({
+        code: zod.ZodIssueCode.custom,
+        path: ['trade_license_expiry'],
+        message: 'Valid expiry date is required for corporate entities',
+      });
+    }
+  }
 });
 
 type CompanyFormFields = zod.infer<typeof companySchema>;
@@ -38,10 +54,16 @@ export default function CompaniesPage() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<CompanyFormFields>({
     resolver: zodResolver(companySchema),
+    defaultValues: {
+      entity_type: 'corporate',
+    },
   });
+
+  const entityType = watch('entity_type');
 
   // Fetch Companies
   const { data: companies, isLoading } = useQuery({
@@ -78,14 +100,16 @@ export default function CompaniesPage() {
   // Add Company Mutation
   const addCompanyMutation = useMutation({
     mutationFn: async (newData: CompanyFormFields) => {
+      const isCorporate = newData.entity_type === 'corporate';
       const { data, error } = await supabase
         .from('companies')
         .insert([
           {
             name: newData.name,
-            trade_license_number: newData.trade_license_number,
-            trade_license_issue: newData.trade_license_issue || null,
-            trade_license_expiry: newData.trade_license_expiry,
+            entity_type: newData.entity_type,
+            trade_license_number: isCorporate ? newData.trade_license_number : null,
+            trade_license_issue: (isCorporate && newData.trade_license_issue) ? newData.trade_license_issue : null,
+            trade_license_expiry: isCorporate ? newData.trade_license_expiry : null,
             logo_url: newData.logo_url || null,
             status: 'active',
             email: newData.email || null,
@@ -101,8 +125,10 @@ export default function CompaniesPage() {
       await supabase.from('activity_logs').insert([
         {
           user_id: profile?.id || null,
-          action: 'REGISTERED_NEW_COMPANY',
-          details: `Registered a new company: ${newData.name}`,
+          action: isCorporate ? 'REGISTERED_NEW_COMPANY' : 'REGISTERED_NEW_FAMILY',
+          details: isCorporate 
+            ? `Registered a new company: ${newData.name}`
+            : `Registered a new individual/family: ${newData.name}`,
         },
       ]);
 
@@ -208,10 +234,10 @@ export default function CompaniesPage() {
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="bg-bg-subtle border-b border-border-subtle text-label-sm text-on-surface-variant font-bold">
-                  <th className="p-lg">Company Name</th>
-                  <th className="p-lg">Trade License</th>
-                  <th className="p-lg">License Expiry</th>
-                  <th className="p-lg text-center">Active Employees</th>
+                  <th className="p-lg">Name</th>
+                  <th className="p-lg">Trade License / ID</th>
+                  <th className="p-lg">Expiry Date</th>
+                  <th className="p-lg text-center">Active Members</th>
                   <th className="p-lg text-center">Pending Renewals</th>
                   <th className="p-lg text-center">Status</th>
                   <th className="p-lg text-right">Actions</th>
@@ -223,14 +249,14 @@ export default function CompaniesPage() {
                     <td colSpan={7} className="p-xl text-center text-on-surface-variant">
                       <div className="flex justify-center items-center gap-2">
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></span>
-                        <span>Loading companies...</span>
+                        <span>Loading entities...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filteredCompanies.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-xl text-center text-on-surface-variant">
-                      No companies match your filters.
+                      No records found.
                     </td>
                   </tr>
                 ) : (
@@ -238,12 +264,15 @@ export default function CompaniesPage() {
                     const activeEmployees = (company.employees || []).filter((e: any) => e.status === 'active').length;
                     const pendingRenewals = (company.renewal_requests || []).filter((r: any) => r.status === 'pending').length;
                     const isExpired = company.trade_license_expiry && new Date(company.trade_license_expiry) < new Date();
+                    const isIndividual = company.entity_type === 'individual';
 
                     return (
                       <tr key={company.id} className="hover:bg-surface-container-lowest transition-colors">
                         <td className="p-lg">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold font-title-lg">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold font-title-lg ${
+                              isIndividual ? 'bg-accent/10 text-accent' : 'bg-primary/10 text-primary'
+                            }`}>
                               {company.name.charAt(0).toUpperCase()}
                             </div>
                             <div className="flex flex-col">
@@ -254,7 +283,12 @@ export default function CompaniesPage() {
                                   <span>{company.company_groups.name}</span>
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-on-surface-variant">Corporate Member</span>
+                                <span className="text-[11px] text-on-surface-variant flex items-center gap-0.5 mt-0.5">
+                                  <span className="material-symbols-outlined text-[12px]">
+                                    {isIndividual ? 'person' : 'apartment'}
+                                  </span>
+                                  <span>{isIndividual ? 'Family / Individual' : 'Corporate Member'}</span>
+                                </span>
                               )}
                             </div>
                           </div>
@@ -320,7 +354,7 @@ export default function CompaniesPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-lg shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-150">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-title-lg font-bold text-on-surface">Add New Company</h3>
+                <h3 className="text-title-lg font-bold text-on-surface">Add New Entity</h3>
                 <button
                   onClick={() => {
                     setIsModalOpen(false);
@@ -334,62 +368,79 @@ export default function CompaniesPage() {
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 <div>
-                  <label className="block text-label-md text-on-surface-variant mb-2">Company Name</label>
+                  <label className="block text-label-md text-on-surface-variant mb-2">Entity Type</label>
+                  <select
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary focus:outline-none"
+                    {...register('entity_type')}
+                  >
+                    <option value="corporate">Corporate Business</option>
+                    <option value="individual">Individual / Family</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-2">
+                    {entityType === 'corporate' ? 'Company Name' : 'Family / Name'}
+                  </label>
                   <input
                     type="text"
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary ${
                       errors.name ? 'border-danger focus:ring-danger' : 'border-border-subtle'
                     }`}
-                    placeholder="Enter company name"
+                    placeholder={entityType === 'corporate' ? 'Enter company name' : 'Enter family or individual name'}
                     {...register('name')}
                   />
                   {errors.name && <p className="mt-1 text-danger text-[11px] font-semibold">{errors.name.message}</p>}
                 </div>
 
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-2">Trade License Number</label>
-                  <input
-                    type="text"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary ${
-                      errors.trade_license_number ? 'border-danger focus:ring-danger' : 'border-border-subtle'
-                    }`}
-                    placeholder="e.g. TL-883910"
-                    {...register('trade_license_number')}
-                  />
-                  {errors.trade_license_number && (
-                    <p className="mt-1 text-danger text-[11px] font-semibold">{errors.trade_license_number.message}</p>
-                  )}
-                </div>
+                {entityType === 'corporate' && (
+                  <>
+                    <div>
+                      <label className="block text-label-md text-on-surface-variant mb-2">Trade License Number</label>
+                      <input
+                        type="text"
+                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary ${
+                          errors.trade_license_number ? 'border-danger focus:ring-danger' : 'border-border-subtle'
+                        }`}
+                        placeholder="e.g. TL-883910"
+                        {...register('trade_license_number')}
+                      />
+                      {errors.trade_license_number && (
+                        <p className="mt-1 text-danger text-[11px] font-semibold">{errors.trade_license_number.message}</p>
+                      )}
+                    </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-2">Trade License Issue Date</label>
-                    <input
-                      type="date"
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary ${
-                        errors.trade_license_issue ? 'border-danger focus:ring-danger' : 'border-border-subtle'
-                      }`}
-                      {...register('trade_license_issue')}
-                    />
-                    {errors.trade_license_issue && (
-                      <p className="mt-1 text-danger text-[11px] font-semibold">{errors.trade_license_issue.message}</p>
-                    )}
-                  </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
+                      <div>
+                        <label className="block text-label-md text-on-surface-variant mb-2">Trade License Issue Date</label>
+                        <input
+                          type="date"
+                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary ${
+                            errors.trade_license_issue ? 'border-danger focus:ring-danger' : 'border-border-subtle'
+                          }`}
+                          {...register('trade_license_issue')}
+                        />
+                        {errors.trade_license_issue && (
+                          <p className="mt-1 text-danger text-[11px] font-semibold">{errors.trade_license_issue.message}</p>
+                        )}
+                      </div>
 
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-2">Trade License Expiry Date</label>
-                    <input
-                      type="date"
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary ${
-                        errors.trade_license_expiry ? 'border-danger focus:ring-danger' : 'border-border-subtle'
-                      }`}
-                      {...register('trade_license_expiry')}
-                    />
-                    {errors.trade_license_expiry && (
-                      <p className="mt-1 text-danger text-[11px] font-semibold">{errors.trade_license_expiry.message}</p>
-                    )}
-                  </div>
-                </div>
+                      <div>
+                        <label className="block text-label-md text-on-surface-variant mb-2">Trade License Expiry Date</label>
+                        <input
+                          type="date"
+                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary ${
+                            errors.trade_license_expiry ? 'border-danger focus:ring-danger' : 'border-border-subtle'
+                          }`}
+                          {...register('trade_license_expiry')}
+                        />
+                        {errors.trade_license_expiry && (
+                          <p className="mt-1 text-danger text-[11px] font-semibold">{errors.trade_license_expiry.message}</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-label-md text-on-surface-variant mb-2">Logo URL (Optional)</label>
@@ -402,12 +453,12 @@ export default function CompaniesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-label-md text-on-surface-variant mb-2">Company Group (Optional)</label>
+                  <label className="block text-label-md text-on-surface-variant mb-2">Entity Group (Optional)</label>
                   <select
                     className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary focus:outline-none"
                     {...register('group_id')}
                   >
-                    <option value="">Standalone Company (No Group)</option>
+                    <option value="">Standalone Entity (No Group)</option>
                     {groups?.map((group: any) => (
                       <option key={group.id} value={group.id}>
                         {group.name}
@@ -456,7 +507,7 @@ export default function CompaniesPage() {
                     disabled={addCompanyMutation.isPending}
                     className="px-lg py-2 bg-primary text-white rounded-lg text-body-sm font-semibold hover:brightness-110 disabled:bg-primary/50 disabled:cursor-not-allowed transition-all"
                   >
-                    {addCompanyMutation.isPending ? 'Creating...' : 'Create Company'}
+                    {addCompanyMutation.isPending ? 'Creating...' : 'Create Entity'}
                   </button>
                 </div>
               </form>

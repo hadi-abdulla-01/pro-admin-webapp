@@ -29,20 +29,36 @@ const employeeSchema = zod.object({
 type EmployeeFormFields = zod.infer<typeof employeeSchema>;
 
 const companyEditSchema = zod.object({
-  name: zod.string().min(2, { message: 'Company name must be at least 2 characters' }),
-  trade_license_number: zod.string().min(2, { message: 'Trade license is required' }),
+  name: zod.string().min(2, { message: 'Name must be at least 2 characters' }),
+  entity_type: zod.enum(['corporate', 'individual']),
+  trade_license_number: zod.string().optional(),
   trade_license_issue: zod.string().refine((val) => !val || !isNaN(Date.parse(val)), {
     message: 'Valid issue date is required',
   }).optional(),
-  trade_license_expiry: zod.string().refine((val) => !isNaN(Date.parse(val)), {
-    message: 'Valid expiry date is required',
-  }),
+  trade_license_expiry: zod.string().optional(),
   vat_number: zod.string().or(zod.string().length(0)).optional(),
   subscription_plan: zod.string().or(zod.string().length(0)).optional(),
   assigned_pro: zod.string().or(zod.string().length(0)).optional(),
   email: zod.string().email({ message: 'Invalid email address' }).or(zod.string().length(0)).optional(),
   phone: zod.string().or(zod.string().length(0)).optional(),
   group_id: zod.string().or(zod.string().length(0)).optional(),
+}).superRefine((data, ctx) => {
+  if (data.entity_type === 'corporate') {
+    if (!data.trade_license_number || data.trade_license_number.trim().length < 2) {
+      ctx.addIssue({
+        code: zod.ZodIssueCode.custom,
+        path: ['trade_license_number'],
+        message: 'Trade license is required for corporate entities',
+      });
+    }
+    if (!data.trade_license_expiry || isNaN(Date.parse(data.trade_license_expiry))) {
+      ctx.addIssue({
+        code: zod.ZodIssueCode.custom,
+        path: ['trade_license_expiry'],
+        message: 'Valid expiry date is required for corporate entities',
+      });
+    }
+  }
 });
 
 type CompanyEditFormFields = zod.infer<typeof companyEditSchema>;
@@ -96,20 +112,25 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     register: registerCompany,
     handleSubmit: handleSubmitCompany,
     reset: resetCompany,
+    watch: watchCompany,
     formState: { errors: companyErrors },
   } = useForm<CompanyEditFormFields>({
     resolver: zodResolver(companyEditSchema),
   });
 
+  const editEntityType = watchCompany ? watchCompany('entity_type') : 'corporate';
+
   const updateCompanyMutation = useMutation({
     mutationFn: async (fields: CompanyEditFormFields) => {
+      const isCorporate = fields.entity_type === 'corporate';
       const { data, error } = await supabase
         .from('companies')
         .update({
           name: fields.name,
-          trade_license_number: fields.trade_license_number,
-          trade_license_issue: fields.trade_license_issue || null,
-          trade_license_expiry: fields.trade_license_expiry,
+          entity_type: fields.entity_type,
+          trade_license_number: isCorporate ? fields.trade_license_number : null,
+          trade_license_issue: (isCorporate && fields.trade_license_issue) ? fields.trade_license_issue : null,
+          trade_license_expiry: isCorporate ? fields.trade_license_expiry : null,
           vat_number: fields.vat_number || null,
           subscription_plan: fields.subscription_plan || null,
           assigned_pro: fields.assigned_pro || null,
@@ -127,7 +148,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         {
           user_id: profile?.id || null,
           action: 'COMPANY_UPDATED',
-          details: `Updated details for company: ${fields.name}`,
+          details: `Updated details for entity: ${fields.name} (type: ${fields.entity_type})`,
         },
       ]);
 
@@ -143,6 +164,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     if (company) {
       resetCompany({
         name: company.name,
+        entity_type: company.entity_type || 'corporate',
         trade_license_number: company.trade_license_number || '',
         trade_license_issue: company.trade_license_issue || '',
         trade_license_expiry: company.trade_license_expiry || '',
@@ -887,7 +909,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               className="flex items-center gap-2 px-md py-2 bg-white border border-border-subtle rounded-lg font-label-md text-label-md text-on-surface hover:bg-surface-container-low transition-all text-xs font-semibold cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">person_add</span>
-              <span>Add Employee</span>
+              <span>{company?.entity_type === 'individual' ? 'Add Relative' : 'Add Employee'}</span>
             </button>
             <a
               href={`mailto:${company.email || ''}`}
@@ -916,7 +938,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   : 'text-on-surface-variant hover:text-primary'
               }`}
             >
-              {tab}
+              {tab === 'employees' 
+                ? (company?.entity_type === 'individual' ? 'Family Members' : 'Employees') 
+                : tab}
             </button>
           ))}
         </nav>
@@ -1019,8 +1043,14 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Uploaded</span>
                       </div>
                     </div>
-                    <h4 className="font-title-md text-on-surface font-bold mb-xs">Company Documents</h4>
-                    <p className="text-xs text-on-surface-variant mb-md">TL, MOA, POA, certificates and establishment records</p>
+                    <h4 className="font-title-md text-on-surface font-bold mb-xs">
+                      {company?.entity_type === 'individual' ? 'Family Documents' : 'Company Documents'}
+                    </h4>
+                    <p className="text-xs text-on-surface-variant mb-md">
+                      {company?.entity_type === 'individual' 
+                        ? 'Passport, visa, Emirates ID and personal records' 
+                        : 'TL, MOA, POA, certificates and establishment records'}
+                    </p>
                     <div className="flex flex-wrap gap-2 mb-md">
                       <span className="px-2 py-1 rounded-full bg-success/10 text-success text-[10px] font-bold">Active {companyDocumentStatusCounts.active}</span>
                       <span className="px-2 py-1 rounded-full bg-warning/10 text-warning text-[10px] font-bold">Soon {companyDocumentStatusCounts.expiringSoon}</span>
@@ -1036,7 +1066,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-on-surface-variant">No company documents uploaded.</p>
+                      <p className="text-xs text-on-surface-variant">
+                        {company?.entity_type === 'individual' ? 'No family documents uploaded.' : 'No company documents uploaded.'}
+                      </p>
                     )}
                   </div>
                   <div
@@ -1053,8 +1085,14 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Uploaded</span>
                       </div>
                     </div>
-                    <h4 className="font-title-md text-on-surface font-bold mb-xs">Partner Documents</h4>
-                    <p className="text-xs text-on-surface-variant mb-md">Partner or sponsor passport, visa, EID and residency files</p>
+                    <h4 className="font-title-md text-on-surface font-bold mb-xs">
+                      {company?.entity_type === 'individual' ? 'Sponsor Documents' : 'Partner Documents'}
+                    </h4>
+                    <p className="text-xs text-on-surface-variant mb-md">
+                      {company?.entity_type === 'individual'
+                        ? 'Sponsor or head of family visa, passport, EID and residency files'
+                        : 'Partner or sponsor passport, visa, EID and residency files'}
+                    </p>
                     <div className="flex flex-wrap gap-2 mb-md">
                       <span className="px-2 py-1 rounded-full bg-success/10 text-success text-[10px] font-bold">Active {partnerDocumentStatusCounts.active}</span>
                       <span className="px-2 py-1 rounded-full bg-warning/10 text-warning text-[10px] font-bold">Soon {partnerDocumentStatusCounts.expiringSoon}</span>
@@ -1225,12 +1263,14 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
           <div className="space-y-md">
             <div className="bg-white rounded-2xl border border-border-subtle shadow-sm overflow-hidden">
               <div className="p-lg border-b border-border-subtle flex justify-between items-center bg-bg-subtle">
-                <h3 className="font-title-md text-title-md text-on-surface">Employee Roster</h3>
+                <h3 className="font-title-md text-title-md text-on-surface">
+                  {company?.entity_type === 'individual' ? 'Family Members / Relatives' : 'Employee Roster'}
+                </h3>
                 <button
                   onClick={() => setIsEmployeeModalOpen(true)}
                   className="px-md py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:brightness-110 cursor-pointer"
                 >
-                  Add Employee
+                  {company?.entity_type === 'individual' ? 'Add Relative' : 'Add Employee'}
                 </button>
               </div>
               <div className="overflow-x-auto custom-scrollbar">
@@ -1238,7 +1278,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   <thead>
                     <tr className="bg-surface-container-low border-b border-border-subtle font-bold text-on-surface-variant text-[11px] uppercase tracking-wider">
                       <th className="p-lg">Name</th>
-                      <th className="p-lg">Designation</th>
+                      <th className="p-lg">{company?.entity_type === 'individual' ? 'Relationship' : 'Designation'}</th>
                       <th className="p-lg">Visa Expiry</th>
                       <th className="p-lg">Passport Expiry</th>
                       <th className="p-lg text-center">Status</th>
@@ -1248,7 +1288,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   <tbody className="divide-y divide-border-subtle font-body-sm text-on-surface">
                     {isEmployeesLoading ? (
                       <tr>
-                        <td colSpan={6} className="p-xl text-center">Loading employee list...</td>
+                        <td colSpan={6} className="p-xl text-center">
+                          {company?.entity_type === 'individual' ? 'Loading relative list...' : 'Loading employee list...'}
+                        </td>
                       </tr>
                     ) : employees && employees.length > 0 ? (
                       employees.map((emp) => {
@@ -1377,7 +1419,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-lg shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-title-lg font-bold text-on-surface">Edit Company Details</h3>
+              <h3 className="text-title-lg font-bold text-on-surface">
+                {editEntityType === 'corporate' ? 'Edit Company Details' : 'Edit Family Details'}
+              </h3>
               <button
                 onClick={() => {
                   setIsEditCompanyModalOpen(false);
@@ -1391,7 +1435,20 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
             <form onSubmit={handleSubmitCompany((data) => updateCompanyMutation.mutate(data))} className="space-y-4">
               <div>
-                <label className="block text-label-md text-on-surface-variant mb-1">Company Name</label>
+                <label className="block text-label-md text-on-surface-variant mb-1">Entity Type</label>
+                <select
+                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
+                  {...registerCompany('entity_type')}
+                >
+                  <option value="corporate">Corporate Business</option>
+                  <option value="individual">Individual / Family</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-label-md text-on-surface-variant mb-1">
+                  {editEntityType === 'corporate' ? 'Company Name' : 'Family / Sponsor Name'}
+                </label>
                 <input
                   type="text"
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
@@ -1402,64 +1459,67 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 )}
               </div>
 
+              {editEntityType === 'corporate' && (
+                <>
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">Trade License No</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                      {...registerCompany('trade_license_number')}
+                    />
+                    {companyErrors.trade_license_number && (
+                      <p className="mt-1 text-danger text-[10px] font-semibold">{companyErrors.trade_license_number.message}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-sm">
+                    <div>
+                      <label className="block text-label-md text-on-surface-variant mb-1">Trade License Issue</label>
+                      <input
+                        type="date"
+                        className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                        {...registerCompany('trade_license_issue')}
+                      />
+                      {companyErrors.trade_license_issue && (
+                        <p className="mt-1 text-danger text-[10px] font-semibold">{companyErrors.trade_license_issue.message}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-label-md text-on-surface-variant mb-1">Trade License Expiry</label>
+                      <input
+                        type="date"
+                        className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                        {...registerCompany('trade_license_expiry')}
+                      />
+                      {companyErrors.trade_license_expiry && (
+                        <p className="mt-1 text-danger text-[10px] font-semibold">{companyErrors.trade_license_expiry.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">VAT Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 100239485700003"
+                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                      {...registerCompany('vat_number')}
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
-                <label className="block text-label-md text-on-surface-variant mb-1">Trade License No</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                  {...registerCompany('trade_license_number')}
-                />
-                {companyErrors.trade_license_number && (
-                  <p className="mt-1 text-danger text-[10px] font-semibold">{companyErrors.trade_license_number.message}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Trade License Issue</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerCompany('trade_license_issue')}
-                  />
-                  {companyErrors.trade_license_issue && (
-                    <p className="mt-1 text-danger text-[10px] font-semibold">{companyErrors.trade_license_issue.message}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Trade License Expiry</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerCompany('trade_license_expiry')}
-                  />
-                  {companyErrors.trade_license_expiry && (
-                    <p className="mt-1 text-danger text-[10px] font-semibold">{companyErrors.trade_license_expiry.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">VAT Number</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 100239485700003"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerCompany('vat_number')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Subscription Plan</label>
-                  <select
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
-                    {...registerCompany('subscription_plan')}
-                  >
-                    <option value="Standard">Standard</option>
-                    <option value="Premium Silver">Premium Silver</option>
-                    <option value="Premium Gold">Premium Gold</option>
-                  </select>
-                </div>
+                <label className="block text-label-md text-on-surface-variant mb-1">Subscription Plan</label>
+                <select
+                  className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
+                  {...registerCompany('subscription_plan')}
+                >
+                  <option value="Standard">Standard</option>
+                  <option value="Premium Silver">Premium Silver</option>
+                  <option value="Premium Gold">Premium Gold</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
@@ -1500,12 +1560,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               </div>
 
               <div>
-                <label className="block text-label-md text-on-surface-variant mb-1">Company Group (Optional)</label>
+                <label className="block text-label-md text-on-surface-variant mb-1">Entity Group (Optional)</label>
                 <select
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
                   {...registerCompany('group_id')}
                 >
-                  <option value="">Standalone Company (No Group)</option>
+                  <option value="">Standalone Entity (No Group)</option>
                   {groupsList?.map((group: any) => (
                     <option key={group.id} value={group.id}>
                       {group.name}
@@ -1543,7 +1603,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-lg shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-title-lg font-bold text-on-surface">Add Employee</h3>
+              <h3 className="text-title-lg font-bold text-on-surface">
+                {company?.entity_type === 'individual' ? 'Add Relative' : 'Add Employee'}
+              </h3>
               <button
                 onClick={() => {
                   setIsEmployeeModalOpen(false);
@@ -1582,10 +1644,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               </div>
 
               <div>
-                <label className="block text-label-md text-on-surface-variant mb-1">Designation</label>
+                <label className="block text-label-md text-on-surface-variant mb-1">
+                  {company?.entity_type === 'individual' ? 'Relationship' : 'Designation'}
+                </label>
                 <input
                   type="text"
-                  placeholder="e.g. Sales Director"
+                  placeholder={company?.entity_type === 'individual' ? 'e.g. Spouse, Child, Parent' : 'e.g. Sales Director'}
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm"
                   {...registerEmployee('designation')}
                 />
@@ -1616,33 +1680,35 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               <hr className="border-border-subtle my-4" />
               <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Government IDs & Expiries</h4>
 
-              {/* Labor Card */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Number</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('labor_card_number')}
-                  />
+              {/* Labor Card - hidden for individuals */}
+              {company?.entity_type !== 'individual' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-sm pb-4">
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Number</label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
+                      {...registerEmployee('labor_card_number')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Issue</label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
+                      {...registerEmployee('labor_card_issue')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Expiry</label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
+                      {...registerEmployee('labor_card_expiry')}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Issue</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('labor_card_issue')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Expiry</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('labor_card_expiry')}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Visa */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
@@ -1716,7 +1782,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   disabled={addEmployeeMutation.isPending}
                   className="px-lg py-2 bg-primary text-white rounded-lg text-body-sm font-semibold hover:brightness-110 disabled:bg-primary/50 transition-all"
                 >
-                  {addEmployeeMutation.isPending ? 'Saving...' : 'Add Employee'}
+                  {addEmployeeMutation.isPending ? 'Saving...' : (company?.entity_type === 'individual' ? 'Add Relative' : 'Add Employee')}
                 </button>
               </div>
             </form>
@@ -2224,7 +2290,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-lg shadow-2xl p-8 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-title-lg font-bold text-on-surface">Edit Employee</h3>
+              <h3 className="text-title-lg font-bold text-on-surface">
+                {company?.entity_type === 'individual' ? 'Edit Relative' : 'Edit Employee'}
+              </h3>
               <button
                 onClick={() => {
                   setIsEditEmployeeModalOpen(false);
@@ -2268,10 +2336,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               </div>
 
               <div>
-                <label className="block text-label-md text-on-surface-variant mb-1">Designation</label>
+                <label className="block text-label-md text-on-surface-variant mb-1">
+                  {company?.entity_type === 'individual' ? 'Relationship' : 'Designation'}
+                </label>
                 <input
                   type="text"
-                  placeholder="e.g. Sales Director"
+                  placeholder={company?.entity_type === 'individual' ? 'e.g. Spouse, Child, Parent' : 'e.g. Sales Director'}
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
                   {...registerEditEmployee('designation')}
                 />
@@ -2299,33 +2369,35 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
 
-              {/* Labor Card */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Number</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('labor_card_number')}
-                  />
+              {/* Labor Card - hidden for individuals */}
+              {company?.entity_type !== 'individual' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Number</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                      {...registerEditEmployee('labor_card_number')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Issue</label>
+                    <input
+                      type="date"
+                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                      {...registerEditEmployee('labor_card_issue')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Expiry</label>
+                    <input
+                      type="date"
+                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                      {...registerEditEmployee('labor_card_expiry')}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Issue</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('labor_card_issue')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Expiry</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('labor_card_expiry')}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Visa */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">

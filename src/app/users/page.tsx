@@ -45,7 +45,7 @@ export default function UsersRolesPage() {
   const { data: companies } = useQuery({
     queryKey: ['companies'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('companies').select('id, name').order('name');
+      const { data, error } = await supabase.from('companies').select('id, name, entity_type').order('name');
       if (error) throw error;
       return data || [];
     },
@@ -401,7 +401,7 @@ export default function UsersRolesPage() {
                           <option value="">None (Individual / Unassigned)</option>
                           {companies?.map((company) => (
                             <option key={company.id} value={company.id}>
-                              {company.name}
+                              {company.name} ({company.entity_type === 'individual' ? 'Family' : 'Corporate'})
                             </option>
                           ))}
                         </select>
@@ -502,7 +502,7 @@ export default function UsersRolesPage() {
                           <option value="">None (Individual / Unassigned)</option>
                           {companies?.map((company) => (
                             <option key={company.id} value={company.id}>
-                              {company.name}
+                              {company.name} ({company.entity_type === 'individual' ? 'Family' : 'Corporate'})
                             </option>
                           ))}
                         </select>
