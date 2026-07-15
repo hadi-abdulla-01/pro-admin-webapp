@@ -9,6 +9,11 @@ import { PDFDocument } from 'pdf-lib';
 export async function compressFile(file: File): Promise<File> {
   const fileType = file.type;
 
+  // Skip compression if the file is already small (less than 1 MB / "KB size")
+  if (file.size < 1024 * 1024) {
+    return file;
+  }
+
   try {
     // 1. Handle Image Compression
     if (fileType.startsWith('image/')) {
