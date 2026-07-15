@@ -473,8 +473,24 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const sortedEmployees = (employees || []).slice().sort((a: any, b: any) => {
     const dir = employeesSortDir === 'asc' ? 1 : -1;
     if (employeesSort === 'alpha') return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`) * dir;
-    if (employeesSort === 'visa_expiry') return ((a.visa_expiry ? Date.parse(a.visa_expiry) : 0) - (b.visa_expiry ? Date.parse(b.visa_expiry) : 0)) * dir;
-    if (employeesSort === 'passport_expiry') return ((a.passport_expiry ? Date.parse(a.passport_expiry) : 0) - (b.passport_expiry ? Date.parse(b.passport_expiry) : 0)) * dir;
+    
+    // Helper to get document expiry dynamically
+    const getDocExpiry = (empId: string, keyword: string) => {
+      const docs = employeeCompanyDocs?.filter((d: any) => d.employee_id === empId) || [];
+      const doc = docs.find((d: any) => d.document_categories?.name?.toLowerCase().includes(keyword));
+      return doc?.expiry_date ? Date.parse(doc.expiry_date) : 0;
+    };
+
+    if (employeesSort === 'visa_expiry') {
+      const aExpiry = getDocExpiry(a.id, 'visa') || (a.visa_expiry ? Date.parse(a.visa_expiry) : 0);
+      const bExpiry = getDocExpiry(b.id, 'visa') || (b.visa_expiry ? Date.parse(b.visa_expiry) : 0);
+      return (aExpiry - bExpiry) * dir;
+    }
+    if (employeesSort === 'passport_expiry') {
+      const aExpiry = getDocExpiry(a.id, 'passport') || (a.passport_expiry ? Date.parse(a.passport_expiry) : 0);
+      const bExpiry = getDocExpiry(b.id, 'passport') || (b.passport_expiry ? Date.parse(b.passport_expiry) : 0);
+      return (aExpiry - bExpiry) * dir;
+    }
     return ((Date.parse(a.created_at || '') || 0) - (Date.parse(b.created_at || '') || 0)) * dir;
   });
 
@@ -1510,8 +1526,15 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                       </tr>
                     ) : sortedEmployees && sortedEmployees.length > 0 ? (
                       sortedEmployees.map((emp) => {
-                        const isVisaExpired = emp.visa_expiry && new Date(emp.visa_expiry) < new Date();
-                        const isPassportExpired = emp.passport_expiry && new Date(emp.passport_expiry) < new Date();
+                        const empDocs = employeeCompanyDocs?.filter((d: any) => d.employee_id === emp.id) || [];
+                        const visaDoc = empDocs.find((d: any) => d.document_categories?.name?.toLowerCase().includes('visa'));
+                        const passportDoc = empDocs.find((d: any) => d.document_categories?.name?.toLowerCase().includes('passport'));
+
+                        const derivedVisaExpiry = visaDoc?.expiry_date || emp.visa_expiry || null;
+                        const derivedPassportExpiry = passportDoc?.expiry_date || emp.passport_expiry || null;
+
+                        const isVisaExpired = derivedVisaExpiry && new Date(derivedVisaExpiry) < new Date();
+                        const isPassportExpired = derivedPassportExpiry && new Date(derivedPassportExpiry) < new Date();
 
                         return (
                           <tr key={emp.id} className="hover:bg-surface-container-lowest transition-colors">
@@ -1519,12 +1542,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                             <td className="p-lg text-on-surface-variant font-medium">{emp.designation}</td>
                             <td className="p-lg">
                               <span className={isVisaExpired ? 'text-danger font-bold' : ''}>
-                                {emp.visa_expiry ? new Date(emp.visa_expiry).toLocaleDateString() : 'N/A'}
+                                {derivedVisaExpiry ? new Date(derivedVisaExpiry).toLocaleDateString() : 'N/A'}
                               </span>
                             </td>
                             <td className="p-lg">
                               <span className={isPassportExpired ? 'text-danger font-bold' : ''}>
-                                {emp.passport_expiry ? new Date(emp.passport_expiry).toLocaleDateString() : 'N/A'}
+                                {derivedPassportExpiry ? new Date(derivedPassportExpiry).toLocaleDateString() : 'N/A'}
                               </span>
                             </td>
                             <td className="p-lg text-center">
@@ -1894,91 +1917,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               <hr className="border-border-subtle my-4" />
               <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Government IDs & Expiries</h4>
 
-              {/* Labor Card - hidden for individuals */}
-              {company?.entity_type !== 'individual' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-sm pb-4">
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Number</label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                      {...registerEmployee('labor_card_number')}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Issue</label>
-                    <input
-                      type="date"
-                      className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                      {...registerEmployee('labor_card_issue')}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Expiry</label>
-                    <input
-                      type="date"
-                      className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                      {...registerEmployee('labor_card_expiry')}
-                    />
-                  </div>
-                </div>
-              )}
 
-              {/* Visa */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Visa Number</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('visa_number')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Visa Issue</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('visa_issue')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Visa Expiry</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('visa_expiry')}
-                  />
-                </div>
-              </div>
-
-              {/* Passport */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Passport Number</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('passport_number')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Passport Issue</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('passport_issue')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Passport Expiry</label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-border-subtle rounded-lg text-xs"
-                    {...registerEmployee('passport_expiry')}
-                  />
-                </div>
-              </div>
 
               <div className="flex gap-sm justify-end pt-4 border-t border-border-subtle">
                 <button
@@ -2720,92 +2659,6 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     type="text"
                     className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
                     {...registerEditEmployee('phone')}
-                  />
-                </div>
-              </div>
-
-              {/* Labor Card - hidden for individuals */}
-              {company?.entity_type !== 'individual' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Number</label>
-                    <input
-                      type="text"
-                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                      {...registerEditEmployee('labor_card_number')}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Issue</label>
-                    <input
-                      type="date"
-                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                      {...registerEditEmployee('labor_card_issue')}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-label-md text-on-surface-variant mb-1">Labor Card Expiry</label>
-                    <input
-                      type="date"
-                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                      {...registerEditEmployee('labor_card_expiry')}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Visa */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Visa Number</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('visa_number')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Visa Issue</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('visa_issue')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Visa Expiry</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('visa_expiry')}
-                  />
-                </div>
-              </div>
-
-              {/* Passport */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Passport Number</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('passport_number')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Passport Issue</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('passport_issue')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-1">Passport Expiry</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
-                    {...registerEditEmployee('passport_expiry')}
                   />
                 </div>
               </div>
