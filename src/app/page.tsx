@@ -26,7 +26,9 @@ export default function DashboardPage() {
         { data: expiringCompDocs },
         { data: expiringEmpDocs },
         { count: totalCompDocs },
-        { count: totalEmpDocs }
+        { count: totalEmpDocs },
+        { data: expiredCompDocsData },
+        { data: expiredEmpDocsData }
       ] = await Promise.all([
         supabase.from('companies').select('*', { count: 'exact', head: true }),
         supabase.from('employees').select('*', { count: 'exact', head: true }),
@@ -40,6 +42,8 @@ export default function DashboardPage() {
         supabase.from('employee_documents').select('id, file_name, expiry_date, document_categories(name), employees(id, first_name, last_name, companies(id, name, entity_type))').gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),
         supabase.from('company_documents').select('*', { count: 'exact', head: true }),
         supabase.from('employee_documents').select('*', { count: 'exact', head: true }),
+        supabase.from('company_documents').select('id, file_name, expiry_date, document_categories(name), companies(id, name, entity_type)').lt('expiry_date', today),
+        supabase.from('employee_documents').select('id, file_name, expiry_date, document_categories(name), employees(id, first_name, last_name, companies(id, name, entity_type))').lt('expiry_date', today),
       ]);
 
       const expiringCount = (expiringDocsCompany || 0) + (expiringDocsEmployee || 0);
@@ -76,6 +80,7 @@ export default function DashboardPage() {
           entity_id: doc.companies?.id,
           entity_type: doc.companies?.entity_type,
           is_employee: false,
+          status: 'expiring'
         })),
         ...(expiringEmpDocs || []).map((doc: any) => ({
           id: doc.id,
@@ -87,6 +92,30 @@ export default function DashboardPage() {
           entity_type: doc.employees?.companies?.entity_type,
           employee_name: `${doc.employees?.first_name || ''} ${doc.employees?.last_name || ''}`.trim(),
           is_employee: true,
+          status: 'expiring'
+        })),
+        ...(expiredCompDocsData || []).map((doc: any) => ({
+          id: doc.id,
+          file_name: doc.file_name,
+          expiry_date: doc.expiry_date,
+          category_name: doc.document_categories?.name || 'Unknown Category',
+          entity_name: doc.companies?.name || 'Unknown Entity',
+          entity_id: doc.companies?.id,
+          entity_type: doc.companies?.entity_type,
+          is_employee: false,
+          status: 'expired'
+        })),
+        ...(expiredEmpDocsData || []).map((doc: any) => ({
+          id: doc.id,
+          file_name: doc.file_name,
+          expiry_date: doc.expiry_date,
+          category_name: doc.document_categories?.name || 'Unknown Category',
+          entity_name: doc.employees?.companies?.name || 'Unknown Entity',
+          entity_id: doc.employees?.companies?.id,
+          entity_type: doc.employees?.companies?.entity_type,
+          employee_name: `${doc.employees?.first_name || ''} ${doc.employees?.last_name || ''}`.trim(),
+          is_employee: true,
+          status: 'expired'
         }))
       ].sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
 
@@ -259,7 +288,7 @@ export default function DashboardPage() {
               {/* Upcoming Expiries List */}
               <div className="bg-white p-lg rounded-2xl border border-border-subtle shadow-sm flex flex-col h-[280px]">
                 <div className="flex justify-between items-center mb-md">
-                  <h3 className="font-title-md text-title-md text-on-surface">Upcoming Expiries</h3>
+                  <h3 className="font-title-md text-title-md text-on-surface">Action Required (Expiries)</h3>
                   <button className="text-on-surface-variant hover:text-primary transition-colors">
                     <span className="material-symbols-outlined">filter_list</span>
                   </button>
@@ -291,10 +320,14 @@ export default function DashboardPage() {
                             </div>
                           </div>
                           <div className="flex flex-col items-end shrink-0 pl-2">
-                            <span className="text-xs font-bold text-warning">
-                              {new Date(doc.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            <span className={`text-xs font-bold ${doc.status === 'expired' ? 'text-danger' : 'text-warning'}`}>
+                              {new Date(doc.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                             </span>
-                            <span className="text-[10px] text-on-surface-variant font-medium">Expiry</span>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-1 ${
+                              doc.status === 'expired' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'
+                            }`}>
+                              {doc.status}
+                            </span>
                           </div>
                         </div>
                       );
