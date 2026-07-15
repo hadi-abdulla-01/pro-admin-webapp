@@ -1301,6 +1301,36 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
             {/* Right 4-cols sidebar info */}
             <div className="col-span-12 lg:col-span-4 flex flex-col gap-lg">
+              {/* Compliance Overview */}
+              <div className="bg-white p-lg rounded-2xl border border-border-subtle shadow-sm text-center flex flex-col justify-between">
+                <h3 className="font-title-md text-title-md text-on-surface mb-md">Compliance Overview</h3>
+                {(() => {
+                  const allDocs = [...(documents || []), ...(employeeCompanyDocs || [])];
+                  const totalDocsCount = allDocs.length;
+                  const expiredDocsCount = allDocs.filter(d => d.expiry_date && new Date(d.expiry_date) < new Date()).length;
+                  const activeDocsCount = totalDocsCount - expiredDocsCount;
+                  const complianceRateValue = totalDocsCount > 0 ? Math.round((activeDocsCount / totalDocsCount) * 100) : 100;
+
+                  return (
+                    <>
+                      <div className="relative w-36 h-36 mx-auto flex items-center justify-center">
+                        <svg className="w-full h-full -rotate-90">
+                          <circle cx="72" cy="72" fill="transparent" r="62" stroke="#F1F5F9" strokeWidth="10"></circle>
+                          <circle cx="72" cy="72" fill="transparent" r="62" stroke="#10B981" strokeDasharray="390" strokeDashoffset={390 - (390 * complianceRateValue) / 100} strokeWidth="10" strokeLinecap="round"></circle>
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-3xl font-extrabold text-on-surface">{isDocsLoading ? '...' : `${complianceRateValue}%`}</span>
+                          <span className="font-label-sm text-label-sm text-success font-bold">Compliant</span>
+                        </div>
+                      </div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant mt-md">
+                        Based on {totalDocsCount} total {company?.entity_type === 'individual' ? 'family' : 'company'} & {company?.entity_type === 'individual' ? 'relative' : 'employee'} documents
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
+
               <div className="bg-white p-lg border border-border-subtle rounded-2xl shadow-sm">
                 <h3 className="font-title-md text-title-md text-on-surface mb-md">Active Renewal Requests</h3>
                 <div className="space-y-3">
