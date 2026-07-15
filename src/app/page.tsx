@@ -1,12 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import AdminLayout from '@/components/admin-layout';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
 export default function DashboardPage() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalFilter, setModalFilter] = useState<'all' | 'expiring' | 'expired'>('all');
+
   // Fetch stats from Supabase
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin-stats'],
@@ -249,7 +252,7 @@ export default function DashboardPage() {
         {/* Charts and Main Grid */}
         <div className="space-y-lg">
           {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-lg">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
             {/* Compliance Overview */}
             <div className="bg-white p-lg rounded-2xl border border-border-subtle shadow-sm text-center flex flex-col justify-between h-[280px]">
               <h3 className="font-title-md text-title-md text-on-surface">Compliance Overview</h3>
@@ -285,61 +288,117 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Upcoming Expiries List */}
-              <div className="bg-white p-lg rounded-2xl border border-border-subtle shadow-sm flex flex-col h-[280px]">
-                <div className="flex justify-between items-center mb-md">
-                  <h3 className="font-title-md text-title-md text-on-surface">Action Required (Expiries)</h3>
-                  <button className="text-on-surface-variant hover:text-primary transition-colors">
-                    <span className="material-symbols-outlined">filter_list</span>
-                  </button>
-                </div>
-                <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
-                  {stats?.upcomingExpiriesList && stats.upcomingExpiriesList.length > 0 ? (
-                    stats.upcomingExpiriesList.map((doc: any) => {
-                      const isIndividual = doc.entity_type === 'individual';
-                      const entityIcon = isIndividual ? 'person' : 'business';
-                      const entityColor = isIndividual ? 'text-accent bg-accent/10' : 'text-primary bg-primary/10';
-                      
-                      return (
-                        <div key={doc.id} className="p-3 bg-surface border border-border-subtle rounded-lg flex justify-between items-center hover:border-primary/30 transition-colors">
-                          <div className="flex items-start gap-3 overflow-hidden">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${entityColor}`}>
-                              <span className="material-symbols-outlined text-[16px]">{entityIcon}</span>
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-sm font-bold text-on-surface truncate">{doc.entity_name}</span>
-                              <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-                                <span className="truncate">{doc.category_name}</span>
-                                {doc.is_employee && (
-                                  <>
-                                    <span className="w-1 h-1 rounded-full bg-border-subtle shrink-0"></span>
-                                    <span className="truncate">{doc.employee_name}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
+          </div>
+
+          {/* Expiries Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+            {/* Expiring Soon List */}
+            <div className="bg-white p-lg rounded-2xl border border-border-subtle shadow-sm flex flex-col h-[320px]">
+              <div className="flex justify-between items-center mb-md">
+                <h3 className="font-title-md text-title-md text-on-surface">Expiring Soon</h3>
+                <button 
+                  onClick={() => { setModalFilter('expiring'); setIsModalOpen(true); }}
+                  className="text-on-surface-variant hover:text-primary transition-colors text-sm font-semibold flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[16px]">open_in_full</span>
+                  View All
+                </button>
+              </div>
+              <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                {stats?.upcomingExpiriesList?.filter((d: any) => d.status === 'expiring').length ? (
+                  stats.upcomingExpiriesList.filter((d: any) => d.status === 'expiring').map((doc: any) => {
+                    const isIndividual = doc.entity_type === 'individual';
+                    const entityIcon = isIndividual ? 'person' : 'business';
+                    const entityColor = isIndividual ? 'text-accent bg-accent/10' : 'text-primary bg-primary/10';
+                    return (
+                      <div key={doc.id} className="p-3 bg-surface border border-border-subtle rounded-lg flex justify-between items-center hover:border-primary/30 transition-colors">
+                        <div className="flex items-start gap-3 overflow-hidden">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${entityColor}`}>
+                            <span className="material-symbols-outlined text-[16px]">{entityIcon}</span>
                           </div>
-                          <div className="flex flex-col items-end shrink-0 pl-2">
-                            <span className={`text-xs font-bold ${doc.status === 'expired' ? 'text-danger' : 'text-warning'}`}>
-                              {new Date(doc.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                            <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-1 ${
-                              doc.status === 'expired' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'
-                            }`}>
-                              {doc.status}
-                            </span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold text-on-surface truncate">{doc.entity_name}</span>
+                            <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                              <span className="truncate">{doc.category_name}</span>
+                              {doc.is_employee && (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-border-subtle shrink-0"></span>
+                                  <span className="truncate">{doc.employee_name}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      );
-                    })
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-on-surface-variant space-y-2">
-                      <span className="material-symbols-outlined text-4xl opacity-20">task_alt</span>
-                      <p className="text-sm">No upcoming expiries</p>
-                    </div>
-                  )}
-                </div>
+                        <div className="flex flex-col items-end shrink-0 pl-2">
+                          <span className="text-xs font-bold text-warning">
+                            {new Date(doc.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-on-surface-variant space-y-2">
+                    <span className="material-symbols-outlined text-4xl opacity-20">task_alt</span>
+                    <p className="text-sm">No expiring documents</p>
+                  </div>
+                )}
               </div>
+            </div>
+
+            {/* Expired List */}
+            <div className="bg-white p-lg rounded-2xl border border-border-subtle shadow-sm flex flex-col h-[320px]">
+              <div className="flex justify-between items-center mb-md">
+                <h3 className="font-title-md text-title-md text-on-surface">Expired Documents</h3>
+                <button 
+                  onClick={() => { setModalFilter('expired'); setIsModalOpen(true); }}
+                  className="text-on-surface-variant hover:text-danger transition-colors text-sm font-semibold flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[16px]">open_in_full</span>
+                  View All
+                </button>
+              </div>
+              <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                {stats?.upcomingExpiriesList?.filter((d: any) => d.status === 'expired').length ? (
+                  stats.upcomingExpiriesList.filter((d: any) => d.status === 'expired').map((doc: any) => {
+                    const isIndividual = doc.entity_type === 'individual';
+                    const entityIcon = isIndividual ? 'person' : 'business';
+                    const entityColor = isIndividual ? 'text-accent bg-accent/10' : 'text-primary bg-primary/10';
+                    return (
+                      <div key={doc.id} className="p-3 bg-surface border border-border-subtle rounded-lg flex justify-between items-center hover:border-danger/30 transition-colors">
+                        <div className="flex items-start gap-3 overflow-hidden">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${entityColor}`}>
+                            <span className="material-symbols-outlined text-[16px]">{entityIcon}</span>
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold text-on-surface truncate">{doc.entity_name}</span>
+                            <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                              <span className="truncate">{doc.category_name}</span>
+                              {doc.is_employee && (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-border-subtle shrink-0"></span>
+                                  <span className="truncate">{doc.employee_name}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end shrink-0 pl-2">
+                          <span className="text-xs font-bold text-danger">
+                            {new Date(doc.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-on-surface-variant space-y-2">
+                    <span className="material-symbols-outlined text-4xl opacity-20">task_alt</span>
+                    <p className="text-sm">No expired documents</p>
+                  </div>
+                )}
+              </div>
+            </div>
             </div>
 
             {/* Recent Activity Section */}
@@ -411,6 +470,97 @@ export default function DashboardPage() {
             </div>
         </div>
       </div>
+
+      {/* Large View Modal for Expiries */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
+          <div className="bg-surface w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-lg py-md border-b border-border-subtle flex justify-between items-center bg-bg-subtle shrink-0">
+              <div className="flex items-center gap-4">
+                <h2 className="font-title-lg text-title-lg text-on-surface font-bold">Document Expiries</h2>
+                <div className="flex bg-surface-container rounded-lg p-1">
+                  <button 
+                    onClick={() => setModalFilter('all')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${modalFilter === 'all' ? 'bg-white shadow text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                  >
+                    All
+                  </button>
+                  <button 
+                    onClick={() => setModalFilter('expiring')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${modalFilter === 'expiring' ? 'bg-white shadow text-warning' : 'text-on-surface-variant hover:text-warning'}`}
+                  >
+                    Expiring Soon
+                  </button>
+                  <button 
+                    onClick={() => setModalFilter('expired')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${modalFilter === 'expired' ? 'bg-white shadow text-danger' : 'text-on-surface-variant hover:text-danger'}`}
+                  >
+                    Expired
+                  </button>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto bg-surface p-0">
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0 bg-surface-container-lowest shadow-sm z-10">
+                  <tr>
+                    <th className="p-4 font-label-md text-on-surface-variant border-b border-border-subtle font-semibold">Entity</th>
+                    <th className="p-4 font-label-md text-on-surface-variant border-b border-border-subtle font-semibold">Document Category</th>
+                    <th className="p-4 font-label-md text-on-surface-variant border-b border-border-subtle font-semibold">Related Employee</th>
+                    <th className="p-4 font-label-md text-on-surface-variant border-b border-border-subtle font-semibold">Expiry Date</th>
+                    <th className="p-4 font-label-md text-on-surface-variant border-b border-border-subtle font-semibold text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {stats?.upcomingExpiriesList
+                    ?.filter((d: any) => modalFilter === 'all' ? true : d.status === modalFilter)
+                    .map((doc: any) => {
+                      const isIndividual = doc.entity_type === 'individual';
+                      return (
+                        <tr key={doc.id} className="hover:bg-surface-container-lowest transition-colors">
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <span className={`material-symbols-outlined text-[20px] ${isIndividual ? 'text-accent' : 'text-primary'}`}>
+                                {isIndividual ? 'person' : 'business'}
+                              </span>
+                              <span className="font-semibold text-sm text-on-surface">{doc.entity_name}</span>
+                            </div>
+                          </td>
+                          <td className="p-4 text-sm text-on-surface">{doc.category_name}</td>
+                          <td className="p-4 text-sm text-on-surface-variant">{doc.employee_name || '-'}</td>
+                          <td className="p-4 text-sm font-medium text-on-surface">
+                            {new Date(doc.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </td>
+                          <td className="p-4 text-right">
+                            <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                              doc.status === 'expired' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'
+                            }`}>
+                              {doc.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                  })}
+                  {stats?.upcomingExpiriesList?.filter((d: any) => modalFilter === 'all' ? true : d.status === modalFilter).length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-on-surface-variant">
+                        No documents found in this category.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }
