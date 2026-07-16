@@ -1475,9 +1475,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
               <div className="bg-white p-lg border border-border-subtle rounded-2xl shadow-sm">
                 <h3 className="font-title-md text-title-md text-on-surface mb-md">Active Renewal Requests</h3>
                 <div className="space-y-3">
-                  {renewals && renewals.filter((r) => r.status === 'pending').length > 0 ? (
+                  {renewals && renewals.filter((r) => r.status === 'pending' || r.status === 'requested' || r.status === 'in_progress').length > 0 ? (
                     renewals
-                      .filter((r) => r.status === 'pending')
+                      .filter((r) => r.status === 'pending' || r.status === 'requested' || r.status === 'in_progress')
                       .map((req) => (
                         <div key={req.id} className="p-3 bg-surface-container-low border border-border-subtle rounded-lg flex flex-col gap-1.5 text-xs">
                           <span className="font-bold">{req.document_categories?.name || 'Document'} Renewal</span>
@@ -1485,8 +1485,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                             <span className="text-on-surface-variant">Employee: {req.employees.first_name} {req.employees.last_name}</span>
                           )}
                           <p className="text-on-surface-variant">{req.details}</p>
-                          <span className="self-start px-2 py-0.5 bg-warning/15 text-warning font-bold rounded-full text-[9px] uppercase">
-                            Pending Admin Action
+                          <span className={`self-start px-2 py-0.5 font-bold rounded-full text-[9px] uppercase ${
+                            req.status === 'in_progress'
+                              ? 'bg-primary/10 text-primary'
+                              : 'bg-warning/15 text-warning'
+                          }`}>
+                            {req.status === 'in_progress' ? 'In Progress' : 'Requested'}
                           </span>
                         </div>
                       ))
@@ -1598,32 +1602,32 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                               </span>
                             </td>
                             <td className="p-lg text-right space-x-2">
-                              <button
-                                onClick={() => doc.employee_id ? handleViewEmpDoc(doc.file_path) : handleViewDoc(doc.file_path)}
-                                className="px-2.5 py-1 text-xs font-semibold border border-border-subtle text-primary rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
-                              >
-                                Open
-                              </button>
-                              <button
-                                onClick={() => doc.employee_id ? handleOpenEditEmpDocModal(doc) : handleOpenEditDocModal(doc)}
-                                className="px-2.5 py-1 text-xs font-semibold border border-border-subtle text-on-surface rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to delete this document?')) {
-                                    if (doc.employee_id) {
-                                      deleteEmpDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
-                                    } else {
-                                      deleteDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
-                                    }
+                            <button
+                              onClick={() => doc.employee_id ? handleViewEmpDoc(doc.file_path) : handleViewDoc(doc.file_path)}
+                              className="inline-flex items-center justify-center w-[76px] px-2.5 py-1 text-xs font-semibold border border-border-subtle text-primary rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
+                            >
+                              Open
+                            </button>
+                            <button
+                              onClick={() => doc.employee_id ? handleOpenEditEmpDocModal(doc) : handleOpenEditDocModal(doc)}
+                              className="inline-flex items-center justify-center w-[76px] px-2.5 py-1 text-xs font-semibold border border-border-subtle text-on-surface rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this document?')) {
+                                  if (doc.employee_id) {
+                                    deleteEmpDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
+                                  } else {
+                                    deleteDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
                                   }
-                                }}
-                                className="px-2.5 py-1 text-xs font-semibold border border-danger/20 text-danger rounded-lg hover:bg-danger/5 transition-colors cursor-pointer"
-                              >
-                                Delete
-                              </button>
+                                }
+                              }}
+                              className="inline-flex items-center justify-center w-[76px] px-2.5 py-1 text-xs font-semibold border border-danger/20 text-danger rounded-lg hover:bg-danger/5 transition-colors cursor-pointer"
+                            >
+                              Delete
+                            </button>
                             </td>
                           </tr>
                         );
@@ -1729,28 +1733,28 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                               </span>
                             </td>
                             <td className="p-lg text-right space-x-2">
-                              <button
-                                onClick={() => setManagedEmployee(emp)}
-                                className="px-2.5 py-1 text-xs font-semibold border border-border-subtle text-primary rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
-                              >
-                                Manage Docs
-                              </button>
-                              <button
-                                onClick={() => handleOpenEditEmployeeModal(emp)}
-                                className="px-2.5 py-1 text-xs font-semibold border border-border-subtle text-on-surface rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`Are you sure you want to delete employee ${emp.first_name} ${emp.last_name}?`)) {
-                                    deleteEmployeeMutation.mutate(emp.id);
-                                  }
-                                }}
-                                className="px-2.5 py-1 text-xs font-semibold border border-danger/20 text-danger rounded-lg hover:bg-danger/5 transition-colors cursor-pointer"
-                              >
-                                Delete
-                              </button>
+                            <button
+                              onClick={() => setManagedEmployee(emp)}
+                              className="inline-flex items-center justify-center w-[106px] px-2.5 py-1 text-xs font-semibold border border-border-subtle text-primary rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
+                            >
+                              Manage Docs
+                            </button>
+                            <button
+                              onClick={() => handleOpenEditEmployeeModal(emp)}
+                              className="inline-flex items-center justify-center w-[76px] px-2.5 py-1 text-xs font-semibold border border-border-subtle text-on-surface rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete employee ${emp.first_name} ${emp.last_name}?`)) {
+                                  deleteEmployeeMutation.mutate(emp.id);
+                                }
+                              }}
+                              className="inline-flex items-center justify-center w-[76px] px-2.5 py-1 text-xs font-semibold border border-danger/20 text-danger rounded-lg hover:bg-danger/5 transition-colors cursor-pointer"
+                            >
+                              Delete
+                            </button>
                             </td>
                           </tr>
                         );
@@ -1799,13 +1803,16 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         </td>
                         <td className="p-lg max-w-xs truncate text-on-surface-variant">{req.details}</td>
                         <td className="p-lg text-center">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${req.status === 'pending'
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            req.status === 'pending' || req.status === 'requested'
                               ? 'bg-warning/10 text-warning'
-                              : req.status === 'approved'
-                                ? 'bg-success/10 text-success'
-                                : 'bg-danger/10 text-danger'
-                            }`}>
-                            {req.status}
+                              : req.status === 'in_progress'
+                                ? 'bg-primary/10 text-primary'
+                                : req.status === 'approved'
+                                  ? 'bg-success/10 text-success'
+                                  : 'bg-danger/10 text-danger'
+                          }`}>
+                            {req.status === 'in_progress' ? 'In Progress' : req.status}
                           </span>
                         </td>
                       </tr>
@@ -2446,13 +2453,13 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                                 <td className="p-md text-right space-x-1 whitespace-nowrap">
                                   <button
                                     onClick={() => handleViewEmpDoc(doc.file_path)}
-                                    className="px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-primary rounded hover:bg-primary/5 transition-colors cursor-pointer"
+                                    className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-primary rounded hover:bg-primary/5 transition-colors cursor-pointer"
                                   >
                                     Open
                                   </button>
                                   <button
                                     onClick={() => handleOpenEditEmpDocModal(doc)}
-                                    className="px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-on-surface rounded hover:bg-surface-container transition-colors cursor-pointer"
+                                    className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-on-surface rounded hover:bg-surface-container transition-colors cursor-pointer"
                                   >
                                     Edit
                                   </button>
@@ -2462,7 +2469,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                                         deleteEmpDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
                                       }
                                     }}
-                                    className="px-2 py-0.5 text-[10px] font-semibold border border-danger/20 text-danger rounded hover:bg-danger/5 transition-colors cursor-pointer"
+                                    className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-danger/20 text-danger rounded hover:bg-danger/5 transition-colors cursor-pointer"
                                   >
                                     Delete
                                   </button>

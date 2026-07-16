@@ -24,7 +24,7 @@ export default function RenewalsPage() {
 
   // Action mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: 'approved' | 'rejected' }) => {
+    mutationFn: async ({ id, status }: { id: string; status: 'in_progress' | 'approved' | 'rejected' }) => {
       const { error } = await supabase
         .from('renewal_requests')
         .update({ status })
@@ -101,32 +101,60 @@ export default function RenewalsPage() {
                       </td>
                       <td className="p-lg text-center">
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                          req.status === 'pending'
+                          req.status === 'pending' || req.status === 'requested'
                             ? 'bg-warning/10 text-warning'
+                            : req.status === 'in_progress'
+                            ? 'bg-primary/10 text-primary'
                             : req.status === 'approved'
                             ? 'bg-success/10 text-success'
                             : 'bg-danger/10 text-danger'
                         }`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${
-                            req.status === 'pending' ? 'bg-warning' : req.status === 'approved' ? 'bg-success' : 'bg-danger'
+                            req.status === 'pending' || req.status === 'requested'
+                              ? 'bg-warning'
+                              : req.status === 'in_progress'
+                              ? 'bg-primary'
+                              : req.status === 'approved'
+                              ? 'bg-success'
+                              : 'bg-danger'
                           }`}></span>
-                          {req.status}
+                          {req.status === 'in_progress' ? 'In Progress' : req.status}
                         </span>
                       </td>
                       <td className="p-lg text-right space-x-2">
-                        {req.status === 'pending' && (
+                        {(req.status === 'requested' || req.status === 'pending') && (
                           <>
                             <button
-                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'approved' })}
-                              className="px-2.5 py-1 text-xs font-bold bg-success text-white rounded-lg hover:brightness-110 cursor-pointer"
+                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'in_progress' })}
+                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-28 bg-primary text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
                             >
-                              Approve
+                              <span className="material-symbols-outlined text-[14px]">sync</span>
+                              <span>In Progress</span>
                             </button>
                             <button
                               onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'rejected' })}
-                              className="px-2.5 py-1 text-xs font-bold bg-danger text-white rounded-lg hover:brightness-110 cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-danger text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
                             >
-                              Reject
+                              <span className="material-symbols-outlined text-[14px]">close</span>
+                              <span>Reject</span>
+                            </button>
+                          </>
+                        )}
+                        {req.status === 'in_progress' && (
+                          <>
+                            <button
+                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'approved' })}
+                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-28 bg-success text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">check</span>
+                              <span>Approve</span>
+                            </button>
+                            <button
+                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'rejected' })}
+                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-danger text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">close</span>
+                              <span>Reject</span>
                             </button>
                           </>
                         )}

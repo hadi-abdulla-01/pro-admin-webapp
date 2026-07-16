@@ -39,7 +39,7 @@ export default function DashboardPage() {
         supabase.from('employee_documents').select('*', { count: 'exact', head: true }).gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),
         supabase.from('company_documents').select('*', { count: 'exact', head: true }).lt('expiry_date', today),
         supabase.from('employee_documents').select('*', { count: 'exact', head: true }).lt('expiry_date', today),
-        supabase.from('renewal_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('renewal_requests').select('*', { count: 'exact', head: true }).in('status', ['pending', 'requested', 'in_progress']),
         supabase.from('renewal_requests').select('created_at'),
         supabase.from('company_documents').select('id, file_name, expiry_date, document_categories(name), companies(id, name, entity_type)').gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),
         supabase.from('employee_documents').select('id, file_name, expiry_date, document_categories(name), employees(id, first_name, last_name, companies(id, name, entity_type))').gte('expiry_date', today).lte('expiry_date', thirtyDaysFromNow),

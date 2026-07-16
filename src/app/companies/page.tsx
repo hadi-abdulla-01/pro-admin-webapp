@@ -277,7 +277,7 @@ export default function CompaniesPage() {
                 ) : (
                   filteredCompanies.map((company) => {
                     const activeEmployees = (company.employees || []).filter((e: any) => e.status === 'active').length;
-                    const pendingRenewals = (company.renewal_requests || []).filter((r: any) => r.status === 'pending').length;
+                    const pendingRenewals = (company.renewal_requests || []).filter((r: any) => r.status === 'pending' || r.status === 'requested' || r.status === 'in_progress').length;
                     const isExpired = company.trade_license_expiry && new Date(company.trade_license_expiry) < new Date();
                     const isIndividual = company.entity_type === 'individual';
 
@@ -339,7 +339,7 @@ export default function CompaniesPage() {
                         <td className="p-lg text-right space-x-2">
                           <Link
                             href={`/companies/${company.id}`}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-surface border border-border-subtle rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors text-primary"
+                            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-surface border border-border-subtle rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors text-primary"
                           >
                             <span>Manage</span>
                             <span className="material-symbols-outlined text-xs">arrow_forward</span>
@@ -350,7 +350,7 @@ export default function CompaniesPage() {
                                 deleteCompanyMutation.mutate(company.id);
                               }
                             }}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 border border-danger/20 text-danger rounded-lg text-xs font-semibold hover:bg-danger/5 transition-colors cursor-pointer"
+                            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 border border-danger/20 text-danger rounded-lg text-xs font-semibold hover:bg-danger/5 transition-colors cursor-pointer"
                           >
                             Delete
                           </button>
