@@ -230,6 +230,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [editEmpDocIssue, setEditEmpDocIssue] = useState('');
   const [editEmpDocExpiry, setEditEmpDocExpiry] = useState('');
   const [editEmpDocCategory, setEditEmpDocCategory] = useState('');
+  const [editEmpDocCustomCategoryName, setEditEmpDocCustomCategoryName] = useState('');
   const [editEmpDocFile, setEditEmpDocFile] = useState<File | null>(null);
 
   // Update Company Document Mutation
@@ -342,6 +343,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       issue_date: string | null; 
       expiry_date: string | null; 
       category_id: string;
+      customCategoryName?: string;
       new_file?: File | null;
       old_file_path?: string;
     }) => {
@@ -394,11 +396,19 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         }
       }
 
+      let finalCategoryId = fields.category_id;
+      if (fields.category_id === 'other') {
+        if (!fields.customCategoryName?.trim()) {
+          throw new Error('Please enter a custom category name.');
+        }
+        finalCategoryId = await createCustomCategory(fields.customCategoryName.trim(), company?.entity_type === 'individual' ? 'relative' : 'employee');
+      }
+
       const updatePayload: any = {
         file_name: fields.file_name,
         issue_date: fields.issue_date || null,
         expiry_date: fields.expiry_date || null,
-        category_id: fields.category_id,
+        category_id: finalCategoryId,
         status,
       };
 
@@ -429,6 +439,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       if (managedEmployee) {
         queryClient.invalidateQueries({ queryKey: ['employee-documents', managedEmployee.id] });
       }
+      queryClient.invalidateQueries({ queryKey: ['document-categories'] });
       setIsEditEmpDocModalOpen(false);
       setEditingEmpDoc(null);
       setEditEmpDocFile(null);
@@ -456,6 +467,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     setEditEmpDocIssue(doc.issue_date || '');
     setEditEmpDocExpiry(doc.expiry_date || '');
     setEditEmpDocCategory(doc.category_id || ''); // always use id directly
+    setEditEmpDocCustomCategoryName('');
     setIsEditEmpDocModalOpen(true);
   };
 
@@ -1064,6 +1076,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   // Employee Documents Management State
   const [managedEmployee, setManagedEmployee] = useState<any | null>(null);
   const [empDocCategory, setEmpDocCategory] = useState('');
+  const [empDocCustomCategoryName, setEmpDocCustomCategoryName] = useState('');
   const [empDocFileName, setEmpDocFileName] = useState('');
   const [empDocIssue, setEmpDocIssue] = useState('');
   const [empDocExpiry, setEmpDocExpiry] = useState('');
@@ -1112,10 +1125,20 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       alert('Please select a file and a category.');
       return;
     }
+
+    if (empDocCategory === 'other' && !empDocCustomCategoryName.trim()) {
+      alert('Please enter a custom category name.');
+      return;
+    }
+
     setIsUploadingEmpDoc(true);
 
     try {
-      const finalCategoryId = empDocCategory; // always a valid category_id from DB selector
+      let finalCategoryId = empDocCategory;
+      if (empDocCategory === 'other') {
+        finalCategoryId = await createCustomCategory(empDocCustomCategoryName.trim(), company?.entity_type === 'individual' ? 'relative' : 'employee');
+      }
+
       let fileName = empDocFileName || empDocFile.name;
       const originalExtension = empDocFile.name.split('.').pop();
       if (originalExtension && !fileName.toLowerCase().endsWith(`.${originalExtension.toLowerCase()}`)) {
@@ -1173,6 +1196,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
       queryClient.invalidateQueries({ queryKey: ['employee-documents', managedEmployee.id] });
       setEmpDocCategory('');
+      setEmpDocCustomCategoryName('');
       setEmpDocFileName('');
       setEmpDocIssue('');
       setEmpDocExpiry('');
@@ -2403,6 +2427,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 onClick={() => {
                   setManagedEmployee(null);
                   setEmpDocCategory('');
+                  setEmpDocCustomCategoryName('');
                   setEmpDocFileName('');
                   setEmpDocExpiry('');
                   setEmpDocFile(null);
@@ -2424,7 +2449,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     <select
                       required
                       value={empDocCategory}
-                      onChange={(e) => setEmpDocCategory(e.target.value)}
+                      onChange={(e) => {
+                        setEmpDocCategory(e.target.value);
+                        if (e.target.value !== 'other') {
+                          setEmpDocCustomCategoryName('');
+                        }
+                      }}
                       className="w-full px-3 py-1.5 border border-border-subtle rounded-lg text-xs bg-white"
                     >
                       <option value="">Select category...</option>
@@ -2437,7 +2467,20 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                             {cat.name}
                           </option>
                         ))}
+                      <option value="other">Others (Create New Category)</option>
                     </select>
+                    {empDocCategory === 'other' && (
+                      <div className="mt-2">
+                        <label className="block text-label-sm text-on-surface-variant mb-1">Custom Category Name</label>
+                        <input
+                          type="text"
+                          value={empDocCustomCategoryName}
+                          onChange={(e) => setEmpDocCustomCategoryName(e.target.value)}
+                          placeholder="e.g. Medical Certificate"
+                          className="w-full px-3 py-1.5 border border-border-subtle rounded-lg text-xs"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -2794,6 +2837,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 onClick={() => {
                   setIsEditEmpDocModalOpen(false);
                   setEditingEmpDoc(null);
+                  setEditEmpDocCategory('');
+                  setEditEmpDocCustomCategoryName('');
+                  setEditEmpDocFile(null);
                 }}
                 className="p-1 rounded-full hover:bg-surface-container transition-colors cursor-pointer"
               >
@@ -2810,6 +2856,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   issue_date: editEmpDocIssue || null,
                   expiry_date: editEmpDocExpiry || null,
                   category_id: editEmpDocCategory,
+                  customCategoryName: editEmpDocCustomCategoryName,
                   new_file: editEmpDocFile,
                   old_file_path: editingEmpDoc.file_path,
                 });
@@ -2832,7 +2879,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 <select
                   required
                   value={editEmpDocCategory}
-                  onChange={(e) => setEditEmpDocCategory(e.target.value)}
+                  onChange={(e) => {
+                    setEditEmpDocCategory(e.target.value);
+                    if (e.target.value !== 'other') {
+                      setEditEmpDocCustomCategoryName('');
+                    }
+                  }}
                   className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white focus:outline-primary"
                 >
                   <option value="">Select category...</option>
@@ -2845,7 +2897,20 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         {cat.name}
                       </option>
                     ))}
+                  <option value="other">Others (Create New Category)</option>
                 </select>
+                {editEmpDocCategory === 'other' && (
+                  <div className="mt-2">
+                    <label className="block text-label-md text-on-surface-variant mb-1">Custom Category Name</label>
+                    <input
+                      type="text"
+                      value={editEmpDocCustomCategoryName}
+                      onChange={(e) => setEditEmpDocCustomCategoryName(e.target.value)}
+                      placeholder="e.g. Medical Certificate"
+                      className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-sm">
@@ -2894,6 +2959,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   onClick={() => {
                     setIsEditEmpDocModalOpen(false);
                     setEditingEmpDoc(null);
+                    setEditEmpDocCategory('');
+                    setEditEmpDocCustomCategoryName('');
+                    setEditEmpDocFile(null);
                   }}
                   className="px-lg py-2 bg-white border border-border-subtle rounded-lg text-body-sm font-semibold hover:bg-surface-container-low transition-colors cursor-pointer"
                 >
