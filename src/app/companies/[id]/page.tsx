@@ -25,6 +25,7 @@ const employeeSchema = zod.object({
   passport_number: zod.string().optional(),
   passport_issue: zod.string().optional(),
   passport_expiry: zod.string().optional(),
+  photo_url: zod.string().optional(),
 });
 
 type EmployeeFormFields = zod.infer<typeof employeeSchema>;
@@ -43,6 +44,7 @@ const companyEditSchema = zod.object({
   email: zod.string().email({ message: 'Invalid email address' }).or(zod.string().length(0)).optional(),
   phone: zod.string().or(zod.string().length(0)).optional(),
   group_id: zod.string().or(zod.string().length(0)).optional(),
+  logo_url: zod.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.entity_type === 'corporate') {
     if (!data.trade_license_number || data.trade_license_number.trim().length < 2) {
@@ -92,6 +94,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [isEditCompanyModalOpen, setIsEditCompanyModalOpen] = useState(false);
   const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   // Sorting states
   const [documentsSort, setDocumentsSort] = useState<'alpha' | 'created' | 'expiry'>('alpha');
   const [employeesSort, setEmployeesSort] = useState<'alpha' | 'created' | 'visa_expiry' | 'passport_expiry'>('alpha');
@@ -113,6 +117,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     register: registerEditEmployee,
     handleSubmit: handleSubmitEditEmployee,
     reset: resetEditEmployee,
+    watch: watchEditEmployee,
     formState: { errors: editEmployeeErrors },
   } = useForm<EmployeeFormFields>({
     resolver: zodResolver(employeeSchema),
@@ -129,10 +134,28 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   });
 
   const editEntityType = watchCompany ? watchCompany('entity_type') : 'corporate';
+  const editEmployeePhotoUrl = watchEditEmployee ? watchEditEmployee('photo_url') : '';
 
   const updateCompanyMutation = useMutation({
     mutationFn: async (fields: CompanyEditFormFields) => {
       const isCorporate = fields.entity_type === 'corporate';
+      
+      let logoUrl = fields.logo_url || null;
+      if (logoFile) {
+        const fileExt = logoFile.name.split('.').pop();
+        const fileName = `logos/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('public-assets')
+          .upload(fileName, logoFile, {
+            cacheControl: '3600',
+            upsert: true,
+          });
+        if (uploadError) throw uploadError;
+        logoUrl = supabase.storage
+          .from('public-assets')
+          .getPublicUrl(fileName).data.publicUrl;
+      }
+
       const { data, error } = await supabase
         .from('companies')
         .update({
@@ -147,6 +170,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
           email: fields.email || null,
           phone: fields.phone || null,
           group_id: fields.group_id || null,
+          logo_url: logoUrl,
         })
         .eq('id', companyId)
         .select()
@@ -167,6 +191,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['company-details', companyId] });
       setIsEditCompanyModalOpen(false);
+      setLogoFile(null);
     },
   });
 
@@ -436,6 +461,22 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
   const updateEmployeeMutation = useMutation({
     mutationFn: async (fields: EmployeeFormFields & { id: string }) => {
+      let photoUrl = fields.photo_url || null;
+      if (photoFile) {
+        const fileExt = photoFile.name.split('.').pop();
+        const fileName = `employee_profiles/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('public-assets')
+          .upload(fileName, photoFile, {
+            cacheControl: '3600',
+            upsert: true,
+          });
+        if (uploadError) throw uploadError;
+        photoUrl = supabase.storage
+          .from('public-assets')
+          .getPublicUrl(fileName).data.publicUrl;
+      }
+
       const { data, error } = await supabase
         .from('employees')
         .update({
@@ -453,6 +494,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
           passport_number: fields.passport_number || null,
           passport_issue: fields.passport_issue || null,
           passport_expiry: fields.passport_expiry || null,
+          photo_url: photoUrl,
         })
         .eq('id', fields.id)
         .select()
@@ -474,6 +516,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       queryClient.invalidateQueries({ queryKey: ['company-employees', companyId] });
       setIsEditEmployeeModalOpen(false);
       setEditingEmployeeId(null);
+      setPhotoFile(null);
     },
   });
 
@@ -494,6 +537,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       passport_number: emp.passport_number || '',
       passport_issue: emp.passport_issue || '',
       passport_expiry: emp.passport_expiry || '',
+      photo_url: emp.photo_url || '',
     });
     setIsEditEmployeeModalOpen(true);
   };
@@ -737,6 +781,22 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   // Add Employee Mutation
   const addEmployeeMutation = useMutation({
     mutationFn: async (fields: EmployeeFormFields) => {
+      let photoUrl = null;
+      if (photoFile) {
+        const fileExt = photoFile.name.split('.').pop();
+        const fileName = `employee_profiles/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('public-assets')
+          .upload(fileName, photoFile, {
+            cacheControl: '3600',
+            upsert: true,
+          });
+        if (uploadError) throw uploadError;
+        photoUrl = supabase.storage
+          .from('public-assets')
+          .getPublicUrl(fileName).data.publicUrl;
+      }
+
       const { data, error } = await supabase.from('employees').insert([
         {
           company_id: companyId,
@@ -754,6 +814,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
           passport_number: fields.passport_number || null,
           passport_issue: fields.passport_issue || null,
           passport_expiry: fields.passport_expiry || null,
+          photo_url: photoUrl,
           status: 'active',
         },
       ]);
@@ -773,6 +834,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['company-employees', companyId] });
       setIsEmployeeModalOpen(false);
+      setPhotoFile(null);
       resetEmployee();
     },
   });
@@ -1993,6 +2055,28 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 </select>
               </div>
 
+              <div>
+                <label className="block text-label-md text-on-surface-variant mb-1">Company Logo (Optional)</label>
+                <div className="flex items-center gap-4">
+                  {(logoFile || company?.logo_url) && (
+                    <img
+                      src={logoFile ? URL.createObjectURL(logoFile) : company.logo_url}
+                      alt="Logo preview"
+                      className="w-12 h-12 rounded-lg object-cover border border-border-subtle"
+                    />
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="w-full text-xs text-on-surface-variant file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setLogoFile(file);
+                    }}
+                  />
+                </div>
+              </div>
+
               <div className="flex gap-sm justify-end pt-4 border-t border-border-subtle">
                 <button
                   type="button"
@@ -2092,6 +2176,28 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     type="text"
                     className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm"
                     {...registerEmployee('phone')}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-label-md text-on-surface-variant mb-1">Profile Photo (Optional)</label>
+                <div className="flex items-center gap-4">
+                  {photoFile && (
+                    <img
+                      src={URL.createObjectURL(photoFile)}
+                      alt="Profile preview"
+                      className="w-12 h-12 rounded-full object-cover border border-border-subtle"
+                    />
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="w-full text-xs text-on-surface-variant file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setPhotoFile(file);
+                    }}
                   />
                 </div>
               </div>
@@ -2884,6 +2990,28 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     type="text"
                     className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
                     {...registerEditEmployee('phone')}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-label-md text-on-surface-variant mb-1">Profile Photo (Optional)</label>
+                <div className="flex items-center gap-4">
+                  {(photoFile || editEmployeePhotoUrl) && (
+                    <img
+                      src={photoFile ? URL.createObjectURL(photoFile) : editEmployeePhotoUrl}
+                      alt="Profile preview"
+                      className="w-12 h-12 rounded-full object-cover border border-border-subtle"
+                    />
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="w-full text-xs text-on-surface-variant file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setPhotoFile(file);
+                    }}
                   />
                 </div>
               </div>

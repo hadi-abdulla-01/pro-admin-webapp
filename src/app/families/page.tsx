@@ -49,6 +49,7 @@ export default function FamiliesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   const {
     register,
@@ -101,6 +102,24 @@ export default function FamiliesPage() {
   const addCompanyMutation = useMutation({
     mutationFn: async (newData: FamilyFormFields) => {
       const isCorporate = newData.entity_type === 'corporate';
+      
+      let logoUrl = newData.logo_url || null;
+      if (logoFile) {
+        const fileExt = logoFile.name.split('.').pop();
+        const fileName = `logos/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('public-assets')
+          .upload(fileName, logoFile, {
+            cacheControl: '3600',
+            upsert: true,
+          });
+        if (uploadError) throw uploadError;
+        
+        logoUrl = supabase.storage
+          .from('public-assets')
+          .getPublicUrl(fileName).data.publicUrl;
+      }
+
       const { data, error } = await supabase
         .from('companies')
         .insert([
@@ -110,7 +129,7 @@ export default function FamiliesPage() {
             trade_license_number: isCorporate ? newData.trade_license_number : null,
             trade_license_issue: (isCorporate && newData.trade_license_issue) ? newData.trade_license_issue : null,
             trade_license_expiry: isCorporate ? newData.trade_license_expiry : null,
-            logo_url: newData.logo_url || null,
+            logo_url: logoUrl,
             status: 'active',
             email: newData.email || null,
             phone: newData.phone || null,
@@ -137,6 +156,7 @@ export default function FamiliesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['companies'] });
       setIsModalOpen(false);
+      setLogoFile(null);
       reset();
     },
   });
@@ -435,14 +455,26 @@ export default function FamiliesPage() {
                   </>
                 )}
 
-                <div>
-                  <label className="block text-label-md text-on-surface-variant mb-2">Logo URL (Optional)</label>
-                  <input
-                    type="text"
-                    className={`w-full px-4 py-2 border border-border-subtle rounded-lg focus:ring-2 focus:ring-primary`}
-                    placeholder="https://example.com/logo.png"
-                    {...register('logo_url')}
-                  />
+                 <div>
+                  <label className="block text-label-md text-on-surface-variant mb-2">Family Logo / Photo (Optional)</label>
+                  <div className="flex items-center gap-4">
+                    {logoFile && (
+                      <img
+                        src={URL.createObjectURL(logoFile)}
+                        alt="Logo preview"
+                        className="w-12 h-12 rounded-lg object-cover border border-border-subtle"
+                      />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="w-full text-xs text-on-surface-variant file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setLogoFile(file);
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div>
