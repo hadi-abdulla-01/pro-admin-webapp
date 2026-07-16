@@ -121,43 +121,45 @@ export default function RenewalsPage() {
                           {req.status === 'in_progress' ? 'In Progress' : req.status}
                         </span>
                       </td>
-                      <td className="p-lg text-right space-x-2">
-                        {(req.status === 'requested' || req.status === 'pending') && (
-                          <>
-                            <button
-                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'in_progress' })}
-                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-28 bg-primary text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">sync</span>
-                              <span>In Progress</span>
-                            </button>
-                            <button
-                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'rejected' })}
-                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-danger text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">close</span>
-                              <span>Reject</span>
-                            </button>
-                          </>
-                        )}
-                        {req.status === 'in_progress' && (
-                          <>
-                            <button
-                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'approved' })}
-                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-28 bg-success text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">check</span>
-                              <span>Approve</span>
-                            </button>
-                            <button
-                              onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'rejected' })}
-                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-danger text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">close</span>
-                              <span>Reject</span>
-                            </button>
-                          </>
-                        )}
+                      <td className="p-lg text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2">
+                          {(req.status === 'requested' || req.status === 'pending') && (
+                            <>
+                              <button
+                                onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'in_progress' })}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-28 bg-primary text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">sync</span>
+                                <span>In Progress</span>
+                              </button>
+                              <button
+                                onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'rejected' })}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-danger text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">close</span>
+                                <span>Reject</span>
+                              </button>
+                            </>
+                          )}
+                          {req.status === 'in_progress' && (
+                            <>
+                              <button
+                                onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'approved' })}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-28 bg-success text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">check</span>
+                                <span>Approve</span>
+                              </button>
+                              <button
+                                onClick={() => updateStatusMutation.mutate({ id: req.id, status: 'rejected' })}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-danger text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all cursor-pointer shadow-sm"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">close</span>
+                                <span>Reject</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))

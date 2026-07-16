@@ -321,24 +321,26 @@ export default function FamiliesPage() {
                             {company.status === 'active' ? 'Active' : 'Disabled'}
                           </span>
                         </td>
-                        <td className="p-lg text-right space-x-2">
-                          <Link
-                            href={`/families/${company.id}`}
-                            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-surface border border-border-subtle rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors text-primary"
-                          >
-                            <span>Manage</span>
-                            <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                          </Link>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to delete company "${company.name}"? This will delete all its employees and documents.`)) {
-                                deleteCompanyMutation.mutate(company.id);
-                              }
-                            }}
-                            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 border border-danger/20 text-danger rounded-lg text-xs font-semibold hover:bg-danger/5 transition-colors cursor-pointer"
-                          >
-                            Delete
-                          </button>
+                        <td className="p-lg text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/families/${company.id}`}
+                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-surface border border-border-subtle rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors text-primary"
+                            >
+                              <span>Manage</span>
+                              <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                            </Link>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete company "${company.name}"? This will delete all its employees and documents.`)) {
+                                  deleteCompanyMutation.mutate(company.id);
+                                }
+                              }}
+                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 border border-danger/20 text-danger rounded-lg text-xs font-semibold hover:bg-danger/5 transition-colors cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
