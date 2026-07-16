@@ -726,7 +726,11 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         finalCategoryId = await createCustomCategory(uploadCustomCategoryName.trim(), uploadMainCategory);
       }
 
-      const fileName = uploadFileName || selectedFile.name;
+      let fileName = uploadFileName || selectedFile.name;
+      const originalExtension = selectedFile.name.split('.').pop();
+      if (originalExtension && !fileName.toLowerCase().endsWith(`.${originalExtension.toLowerCase()}`)) {
+        fileName = `${fileName}.${originalExtension}`;
+      }
       const cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
       
       // Compress file before uploading
@@ -937,7 +941,11 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
     try {
       const finalCategoryId = empDocCategory; // always a valid category_id from DB selector
-      const fileName = empDocFileName || empDocFile.name;
+      let fileName = empDocFileName || empDocFile.name;
+      const originalExtension = empDocFile.name.split('.').pop();
+      if (originalExtension && !fileName.toLowerCase().endsWith(`.${originalExtension.toLowerCase()}`)) {
+        fileName = `${fileName}.${originalExtension}`;
+      }
       const cleanFileName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
       const filePath = `${managedEmployee.id}/${Date.now()}_${cleanFileName}`;
 
