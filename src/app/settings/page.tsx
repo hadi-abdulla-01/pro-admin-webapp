@@ -14,6 +14,8 @@ export default function SettingsPage() {
   const [gracePeriod, setGracePeriod] = useState(30);
   const [whatsappNum, setWhatsappNum] = useState('+971 50 000 0000');
   const [phoneNum, setPhoneNum] = useState('+971 4 000 0000');
+  const [adminCompanyName, setAdminCompanyName] = useState('PRO Services');
+  const [adminCompanyLogoUrl, setAdminCompanyLogoUrl] = useState('');
 
   // Fetch PROs
   const { data: pros, isLoading: isProsLoading } = useQuery({
@@ -47,6 +49,8 @@ export default function SettingsPage() {
         if (setting.key === 'system_name') setSysName(setting.value);
         if (setting.key === 'alert_email') setAlertEmail(setting.value);
         if (setting.key === 'grace_period') setGracePeriod(parseInt(setting.value) || 30);
+        if (setting.key === 'admin_company_name') setAdminCompanyName(setting.value);
+        if (setting.key === 'admin_company_logo_url') setAdminCompanyLogoUrl(setting.value);
       });
     }
   }, [settingsData]);
@@ -58,7 +62,9 @@ export default function SettingsPage() {
         { key: 'support_phone', value: phoneNum },
         { key: 'system_name', value: sysName },
         { key: 'alert_email', value: alertEmail },
-        { key: 'grace_period', value: gracePeriod.toString() }
+        { key: 'grace_period', value: gracePeriod.toString() },
+        { key: 'admin_company_name', value: adminCompanyName },
+        { key: 'admin_company_logo_url', value: adminCompanyLogoUrl }
       ];
       const { error } = await supabase.from('app_settings').upsert(settings);
       if (error) throw error;
@@ -167,6 +173,27 @@ export default function SettingsPage() {
                     type="text"
                     value={phoneNum}
                     onChange={(e) => setPhoneNum(e.target.value)}
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-bg-subtle focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-sm mt-4 pt-4 border-t border-border-subtle">
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-1.5">Admin PRO Company Name</label>
+                  <input
+                    type="text"
+                    value={adminCompanyName}
+                    onChange={(e) => setAdminCompanyName(e.target.value)}
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-bg-subtle focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-1.5">Admin PRO Company Logo URL</label>
+                  <input
+                    type="text"
+                    value={adminCompanyLogoUrl}
+                    onChange={(e) => setAdminCompanyLogoUrl(e.target.value)}
                     className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-bg-subtle focus:ring-2 focus:ring-primary"
                   />
                 </div>
