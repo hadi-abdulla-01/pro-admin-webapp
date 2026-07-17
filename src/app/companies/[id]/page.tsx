@@ -73,6 +73,8 @@ type CompanyDocumentRow = {
   issue_date?: string | null;
   expiry_date?: string | null;
   size_bytes?: number | null;
+  owner_name?: string | null;
+  employee_id?: string | null;
   document_categories?: {
     name?: string | null;
     code?: string | null;
@@ -221,6 +223,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [editDocIssue, setEditDocIssue] = useState('');
   const [editDocExpiry, setEditDocExpiry] = useState('');
   const [editDocCategory, setEditDocCategory] = useState('');
+  const [editPartnerOwnerName, setEditPartnerOwnerName] = useState('');
   const [editDocFile, setEditDocFile] = useState<File | null>(null);
 
   // Edit Employee Document state
@@ -241,6 +244,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       issue_date: string | null; 
       expiry_date: string | null; 
       category_id: string;
+      owner_name?: string | null;
       new_file?: File | null;
       old_file_path?: string;
     }) => {
@@ -301,6 +305,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         issue_date: fields.issue_date || null,
         expiry_date: fields.expiry_date || null,
         category_id: fields.category_id,
+        owner_name: fields.owner_name || null,
         status,
       };
 
@@ -451,6 +456,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     setEditDocName(doc.file_name);
     setEditDocIssue(doc.issue_date || '');
     setEditDocExpiry(doc.expiry_date || '');
+    setEditPartnerOwnerName(doc.owner_name || '');
 
     // Use category_group from DB directly (no keyword matching needed)
     const group = doc.document_categories?.category_group as CategoryGroup | undefined;
@@ -754,12 +760,25 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const partnerDocumentStatusCounts = getDocumentStatusCounts(partnerDocumentSummary);
   const companyDocumentCategories = getTopDocumentCategories(companyDocumentSummary);
   const partnerDocumentCategories = getTopDocumentCategories(partnerDocumentSummary);
+  const [selectedPartnerOwnerFilter, setSelectedPartnerOwnerFilter] = useState('all');
+  const partnerOwnerOptions = Array.from(
+    new Set(
+      (partnerDocumentSummary || [])
+        .map((doc: any) => doc.owner_name)
+        .filter((value: string | null | undefined) => Boolean(value))
+    ) as Set<string>
+  ).sort();
+
+  const filteredPartnerDocuments =
+    documentSummaryFilter === 'partner' && selectedPartnerOwnerFilter !== 'all'
+      ? (partnerDocumentSummary || []).filter((doc: any) => doc.owner_name === selectedPartnerOwnerFilter)
+      : partnerDocumentSummary;
 
   const visibleCompanyDocuments =
     documentSummaryFilter === 'company'
       ? companyDocumentSummary
       : documentSummaryFilter === 'partner'
-        ? partnerDocumentSummary
+        ? filteredPartnerDocuments
         : company?.entity_type === 'individual'
           ? [...(companyDocumentSummary || []), ...(partnerDocumentSummary || [])]
           : documents || [];
@@ -863,6 +882,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadIssue, setUploadIssue] = useState('');
   const [uploadExpiry, setUploadExpiry] = useState('');
+  const [uploadPartnerOwnerName, setUploadPartnerOwnerName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -877,6 +897,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       setEditMainCategory('company');
     }
   }, [company?.entity_type]);
+
+  useEffect(() => {
+    if (documentSummaryFilter !== 'partner') {
+      setSelectedPartnerOwnerFilter('all');
+    }
+  }, [documentSummaryFilter]);
 
   // Helper: create a new custom category and return its id
   const createCustomCategory = async (name: string, group: CategoryGroup): Promise<string> => {
@@ -901,6 +927,11 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
     if (uploadSubCategory === 'other' && !uploadCustomCategoryName.trim()) {
       alert('Please enter a custom category name.');
+      return;
+    }
+
+    if (company?.entity_type !== 'individual' && uploadMainCategory === 'partner' && !uploadPartnerOwnerName.trim()) {
+      alert('Please select or enter the partner name.');
       return;
     }
 
@@ -989,6 +1020,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             size_bytes: fileSize,
             issue_date: uploadIssue || null,
             expiry_date: uploadExpiry || null,
+            owner_name: uploadMainCategory === 'partner' ? uploadPartnerOwnerName.trim() : null,
             status: 'active',
           },
         ]);
@@ -1022,6 +1054,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       setUploadFileName('');
       setUploadIssue('');
       setUploadExpiry('');
+      setUploadPartnerOwnerName('');
       setSelectedFile(null);
       setUploadRelativeEmployeeId('');
     } catch (err: any) {
@@ -1600,6 +1633,27 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     <p className="text-xs text-on-surface-variant mt-1">
                       Showing documents selected from overview summary.
                     </p>
+                  )}
+                  {company?.entity_type !== 'individual' && documentSummaryFilter === 'partner' && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPartnerOwnerFilter('all')}
+                        className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border ${selectedPartnerOwnerFilter === 'all' ? 'bg-primary text-white border-primary' : 'bg-white text-on-surface border-border-subtle hover:bg-surface-container-low'}`}
+                      >
+                        All Partners
+                      </button>
+                      {partnerOwnerOptions.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => setSelectedPartnerOwnerFilter(name)}
+                          className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border ${selectedPartnerOwnerFilter === name ? 'bg-primary text-white border-primary' : 'bg-white text-on-surface border-border-subtle hover:bg-surface-container-low'}`}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-sm">
@@ -2289,6 +2343,26 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
 
+              {company?.entity_type !== 'individual' && uploadMainCategory === 'partner' && (
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-2">Partner Name</label>
+                  <input
+                    type="text"
+                    value={uploadPartnerOwnerName}
+                    onChange={(e) => setUploadPartnerOwnerName(e.target.value)}
+                    placeholder="e.g. Ahmed Al Mansoor"
+                    list="partner-owner-options"
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm bg-white"
+                  />
+                  <datalist id="partner-owner-options">
+                    {partnerOwnerOptions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                  <p className="mt-1 text-xs text-on-surface-variant">Choose an existing partner or add a new one.</p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-label-md text-on-surface-variant mb-2">Sub Category</label>
                 <select
@@ -2691,6 +2765,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     issue_date: editDocIssue || null,
                     expiry_date: editDocExpiry || null,
                     category_id: finalCategoryId,
+                    owner_name: editMainCategory === 'partner' ? editPartnerOwnerName.trim() || null : null,
                     new_file: editDocFile,
                     old_file_path: editingDoc.file_path,
                   });
@@ -2758,6 +2833,19 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     placeholder="e.g. Special Agreement"
                     value={editCustomCategoryName}
                     onChange={(e) => setEditCustomCategoryName(e.target.value)}
+                    className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
+                  />
+                </div>
+              )}
+
+              {company?.entity_type !== 'individual' && editMainCategory === 'partner' && (
+                <div>
+                  <label className="block text-label-md text-on-surface-variant mb-1">Partner Name</label>
+                  <input
+                    type="text"
+                    value={editPartnerOwnerName}
+                    onChange={(e) => setEditPartnerOwnerName(e.target.value)}
+                    placeholder="e.g. Ahmed Al Mansoor"
                     className="w-full px-4 py-2 border border-border-subtle rounded-lg text-sm focus:outline-primary"
                   />
                 </div>
