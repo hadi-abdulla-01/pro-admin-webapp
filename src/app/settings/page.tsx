@@ -208,25 +208,27 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <label className="block text-label-md text-on-surface-variant mb-1.5">Admin PRO Company Logo</label>
-                  <div className="flex items-center gap-4">
-                    {adminCompanyLogoUrl && !adminCompanyLogoFile && (
-                      <img src={adminCompanyLogoUrl} alt="Current Logo" className="h-10 w-10 object-contain rounded border border-border-subtle bg-white" />
-                    )}
-                    {adminCompanyLogoFile && (
-                      <div className="h-10 w-10 rounded border border-border-subtle bg-bg-subtle flex items-center justify-center text-xs text-on-surface-variant overflow-hidden">
-                        New
-                      </div>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          setAdminCompanyLogoFile(e.target.files[0]);
-                        }
-                      }}
-                      className="flex-1 px-4 py-2 border border-border-subtle rounded-lg text-sm bg-bg-subtle focus:ring-2 focus:ring-primary file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                    />
+                  <div className="flex flex-wrap items-center gap-4 w-full">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      {adminCompanyLogoUrl && !adminCompanyLogoFile && (
+                        <img src={adminCompanyLogoUrl} alt="Current Logo" className="h-10 w-10 object-contain rounded border border-border-subtle bg-white flex-shrink-0" />
+                      )}
+                      {adminCompanyLogoFile && (
+                        <div className="h-10 w-10 rounded border border-border-subtle bg-bg-subtle flex items-center justify-center text-xs text-on-surface-variant overflow-hidden flex-shrink-0">
+                          New
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setAdminCompanyLogoFile(e.target.files[0]);
+                          }
+                        }}
+                        className="flex-1 px-4 py-2 border border-border-subtle rounded-lg text-sm bg-bg-subtle focus:ring-2 focus:ring-primary file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 min-w-0"
+                      />
+                    </div>
                   </div>
                   <p className="text-xs text-on-surface-variant mt-1">Upload a new logo to replace the current one.</p>
                 </div>
