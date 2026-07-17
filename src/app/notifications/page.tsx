@@ -77,6 +77,17 @@ export default function NotificationsConfigPage() {
     },
   });
 
+  // Delete Notification
+  const deleteNotifyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('notifications').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-notifications'] });
+    },
+  });
+
   const onSubmit = (data: NotifyFields) => {
     addNotifyMutation.mutate(data);
   };
@@ -111,7 +122,7 @@ export default function NotificationsConfigPage() {
               <div className="p-xl text-center text-on-surface-variant">No alerts posted yet.</div>
             ) : (
               notifications?.map((notif) => (
-                <div key={notif.id} className="p-lg flex items-start gap-md hover:bg-surface-container-lowest transition-colors">
+                <div key={notif.id} className="p-lg flex items-start gap-md hover:bg-surface-container-lowest transition-colors group">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
                     notif.type === 'alert'
                       ? 'bg-danger/10 text-danger'
@@ -126,9 +137,23 @@ export default function NotificationsConfigPage() {
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
                       <h4 className="font-title-md text-on-surface font-bold">{notif.title}</h4>
-                      <span className="text-xs text-on-surface-variant">
-                        {new Date(notif.created_at).toLocaleDateString()} {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-on-surface-variant">
+                          {new Date(notif.created_at).toLocaleDateString()} {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete "${notif.title}"? This cannot be undone.`)) {
+                              deleteNotifyMutation.mutate(notif.id);
+                            }
+                          }}
+                          disabled={deleteNotifyMutation.isPending}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-danger/10 text-on-surface-variant hover:text-danger"
+                          title="Delete notification"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
                     </div>
                     <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">{notif.message}</p>
                     <div className="mt-3 flex gap-2">
