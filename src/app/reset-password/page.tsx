@@ -4,14 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
-// Detect if user is on mobile device
-const isMobileDevice = () => {
-  if (typeof window === 'undefined') return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
-};
-
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [password, setPassword] = useState('');
@@ -24,7 +16,6 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     // Extract code from URL - Supabase uses PKCE flow with 'code' parameter
     let code: string | null = null;
-    let type: string | null = null;
     
     console.log('Full URL:', window.location.href);
     console.log('Search params:', window.location.search);
@@ -33,46 +24,20 @@ export default function ResetPasswordPage() {
     // Check query parameters - Supabase uses 'code' for PKCE flow
     const urlParams = new URLSearchParams(window.location.search);
     code = urlParams.get('code');
-    type = urlParams.get('type');
     
     // If not in query params, check hash fragment
     if (!code && window.location.hash) {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       code = hashParams.get('code');
-      type = hashParams.get('type');
     }
     
-    console.log('Parsed params:', { code, type });
+    console.log('Parsed code:', code);
     
-    // Accept the code if it exists, even without type parameter
-    // We're on the reset-password page, so we know it's a recovery flow
+    // Accept the code if it exists
     if (code) {
-      // Store the code - we'll exchange it for a session when user submits the form
       setToken(code);
-      
-      // If on mobile device, automatically try to open the app
-      if (isMobileDevice()) {
-        console.log('Mobile device detected, redirecting to app...');
-        // Give a small delay to show the page briefly, then redirect
-        setTimeout(() => {
-          // Try to open the app with the code
-          window.location.href = `proapp://reset-password?code=${code}&type=recovery`;
-        }, 800);
-      }
     } else {
-      // Show helpful error with debugging info
-      const errorMsg = `Invalid or expired reset link. 
-        
-Please request a new password reset link from the app.
-
-Debug info:
-- URL: ${window.location.href}
-- Search: ${window.location.search}
-- Hash: ${window.location.hash}
-- Code found: ${code ? 'Yes' : 'No'}
-- Type: ${type || 'Not found'}`;
-      
-      setError(errorMsg);
+      setError('Invalid or expired reset link. Please request a new password reset link from the app.');
     }
   }, []);
 
@@ -167,66 +132,7 @@ Debug info:
               <p className="text-sm text-[#8a8a80] mb-4">
                 Please request a new password reset link from the app.
               </p>
-              {isMobileDevice() && (
-                <button
-                  onClick={() => {
-                    window.location.href = 'proapp://reset-password';
-                  }}
-                  className="px-6 py-2 bg-[#316342] text-white rounded-lg hover:bg-[#3d4a2a] transition-colors"
-                >
-                  Open PRO Services App
-                </button>
-              )}
             </div>
-          ) : isMobileDevice() ? (
-            // Mobile: Show the reset form directly on web
-            // This is more reliable than deep linking with tokens
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold text-[#2b2b26] mb-2">
-                  New Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 border border-[#e8ecde] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#316342]"
-                  placeholder="Enter new password"
-                  required
-                  minLength={8}
-                />
-                <p className="mt-1 text-xs text-[#8a8a80]">
-                  Must be 8+ characters with uppercase, lowercase, number, and special character
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-[#2b2b26] mb-2">
-                  Confirm New Password
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 border border-[#e8ecde] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#316342]"
-                  placeholder="Confirm new password"
-                  required
-                  minLength={8}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-[#316342] text-white rounded-lg font-semibold hover:bg-[#3d4a2a] transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Updating...' : 'Update Password'}
-              </button>
-              
-              <p className="text-xs text-center text-[#8a8a80] mt-4">
-                After resetting, you can close this page and open the app.
-              </p>
-            </form>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
