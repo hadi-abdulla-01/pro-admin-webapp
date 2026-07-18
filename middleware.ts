@@ -44,7 +44,10 @@ export const config = {
      * - static assets
      * - images
      * - favicon
+     * - auth/confirm (one-time OTP token route — middleware must not call
+     *   getUser() here because it can consume the token_hash before the
+     *   route handler gets to call verifyOtp())
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|auth/confirm|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
