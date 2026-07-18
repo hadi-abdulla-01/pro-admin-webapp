@@ -18,11 +18,29 @@ export default function ResetPasswordPage() {
     let mounted = true;
 
     const handleAuth = async () => {
-      console.log('Reset page URL:', window.location.href);
+  console.log('Reset page URL:', window.location.href);
 
-      const { data, error } = await supabase.auth.getSession();
-      console.log('Initial session:', data.session);
-      console.log('Initial session error:', error);
+  const code = new URLSearchParams(window.location.search).get('code');
+
+  if (code) {
+    console.log('Exchanging recovery code...');
+
+    const { error: exchangeError } =
+      await supabase.auth.exchangeCodeForSession(code);
+
+    if (exchangeError) {
+      console.error('Exchange error:', exchangeError);
+      setError(exchangeError.message);
+      setLoading(false);
+      return;
+    }
+
+    console.log('Recovery code exchanged successfully.');
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+  console.log('Initial session:', data.session);
+  console.log('Initial session error:', error);
 
       if (!mounted) return;
 
