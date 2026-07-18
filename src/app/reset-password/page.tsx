@@ -188,12 +188,32 @@ export default function ResetPasswordPage() {
           const otpType = recoveryType || 'recovery';
           
           const redirectUrl = window.location.origin + window.location.pathname;
-          console.log('verifyOtp params: token_hash=', code, 'type=', otpType, 'redirect_to=', redirectUrl);
+          console.log('Trying verifyOtp with token_hash...');
+          console.log('token_hash:', code, 'type:', otpType, 'redirectUrl:', redirectUrl);
           
-          const { error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: code,
-            type: otpType,
-          });
+          // Try with token_hash first
+          let verifyError = null;
+          try {
+            const result = await supabase.auth.verifyOtp({
+              token_hash: code,
+              type: otpType,
+            });
+            verifyError = result.error;
+          } catch (e) {
+            verifyError = e;
+          }
+          
+          // If that fails, try with just 'token' parameter name (for older Supabase versions)
+          if (verifyError) {
+            console.log('token_hash failed, trying token...');
+            const result = await supabase.auth.verifyOtp({
+              token: code,
+              type: otpType,
+            } as any);
+            verifyError = result.error;
+          }
+          
+          if (verifyError) {
           if (verifyError) {
             // Enhanced error message with more details
             console.error('verifyOtp error details:', verifyError);
@@ -201,8 +221,8 @@ export default function ResetPasswordPage() {
             console.error('Code:', code);
             console.error('Type:', otpType);
             throw new Error(
-              verifyError.message || 
-              `Invalid or expired recovery link. ${otpType === 'recovery' ? 'Please request a new password reset link from the PRO app. If this persists, the Supabase project in your Flutter app and web app may be different.' : 'Please check the link and try again.'}`
+              verifyError.message || verifyError.toString() || 
+              `Invalid or expired recovery link. Please request a new password reset link from the PRO app.`
             );
           }
         }
