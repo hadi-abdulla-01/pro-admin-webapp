@@ -22,15 +22,30 @@ export default function ResetPasswordPage() {
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Extract token from URL - Supabase sends it as access_token and type=recovery
+    // Extract token from URL - Supabase sends it as 'token' (not access_token)
+    let tokenValue: string | null = null;
+    let type: string | null = null;
+    
+    console.log('Full URL:', window.location.href);
+    console.log('Search params:', window.location.search);
+    console.log('Hash:', window.location.hash);
+    
+    // Check query parameters - Supabase uses 'token' not 'access_token'
     const urlParams = new URLSearchParams(window.location.search);
-    const accessToken = urlParams.get('access_token');
-    const type = urlParams.get('type');
+    tokenValue = urlParams.get('token');
+    type = urlParams.get('type');
     
-    console.log('URL params:', { accessToken, type });
+    // If not in query params, check hash fragment
+    if (!tokenValue && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      tokenValue = hashParams.get('token');
+      type = hashParams.get('type');
+    }
     
-    if (accessToken && type === 'recovery') {
-      setToken(accessToken);
+    console.log('Parsed params:', { tokenValue, type });
+    
+    if (tokenValue && type === 'recovery') {
+      setToken(tokenValue);
       
       // If on mobile device, automatically try to open the app
       if (isMobileDevice()) {
@@ -38,11 +53,23 @@ export default function ResetPasswordPage() {
         // Give a small delay to show the page briefly, then redirect
         setTimeout(() => {
           // Try to open the app with the token
-          window.location.href = `proapp://reset-password?token=${accessToken}&type=recovery`;
+          window.location.href = `proapp://reset-password?token=${tokenValue}&type=recovery`;
         }, 800);
       }
     } else {
-      setError('Invalid or expired reset link. Please request a new password reset link.');
+      // Show helpful error with debugging info
+      const errorMsg = `Invalid or expired reset link. 
+        
+Please request a new password reset link from the app.
+
+Debug info:
+- URL: ${window.location.href}
+- Search: ${window.location.search}
+- Hash: ${window.location.hash}
+- Token found: ${tokenValue ? 'Yes' : 'No'}
+- Type: ${type || 'Not found'}`;
+      
+      setError(errorMsg);
     }
   }, []);
 
@@ -145,22 +172,54 @@ export default function ResetPasswordPage() {
               )}
             </div>
           ) : isMobileDevice() ? (
-            // Mobile: Show loading while redirecting to app
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#316342] border-t-transparent mb-4"></div>
-              <p className="text-[#2b2b26] font-semibold mb-2">Opening PRO Services App...</p>
-              <p className="text-sm text-[#8a8a80] mb-4">
-                If the app doesn't open automatically, tap the button below:
-              </p>
+            // Mobile: Show the reset form directly on web
+            // This is more reliable than deep linking with tokens
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-[#2b2b26] mb-2">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 border border-[#e8ecde] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#316342]"
+                  placeholder="Enter new password"
+                  required
+                  minLength={8}
+                />
+                <p className="mt-1 text-xs text-[#8a8a80]">
+                  Must be 8+ characters with uppercase, lowercase, number, and special character
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-[#2b2b26] mb-2">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 border border-[#e8ecde] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#316342]"
+                  placeholder="Confirm new password"
+                  required
+                  minLength={8}
+                />
+              </div>
+
               <button
-                onClick={() => {
-                  window.location.href = `proapp://reset-password?token=${token}&type=recovery`;
-                }}
-                className="px-6 py-2 bg-[#316342] text-white rounded-lg hover:bg-[#3d4a2a] transition-colors"
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-[#316342] text-white rounded-lg font-semibold hover:bg-[#3d4a2a] transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                Open App
+                {loading ? 'Updating...' : 'Update Password'}
               </button>
-            </div>
+              
+              <p className="text-xs text-center text-[#8a8a80] mt-4">
+                After resetting, you can close this page and open the app.
+              </p>
+            </form>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
