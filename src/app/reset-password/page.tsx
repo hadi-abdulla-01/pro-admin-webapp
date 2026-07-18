@@ -11,31 +11,37 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
+  const [codeVerifier, setCodeVerifier] = useState<string | null>(null);
 
   useEffect(() => {
-    // Extract code from URL - Supabase uses PKCE flow with 'code' parameter
-    let code: string | null = null;
+    // Extract code and code_verifier from URL
+    // Supabase PKCE flow includes both in the reset URL
+    let extractedCode: string | null = null;
+    let extractedCodeVerifier: string | null = null;
     
     console.log('Full URL:', window.location.href);
     console.log('Search params:', window.location.search);
     console.log('Hash:', window.location.hash);
     
-    // Check query parameters - Supabase uses 'code' for PKCE flow
+    // Check query parameters first
     const urlParams = new URLSearchParams(window.location.search);
-    code = urlParams.get('code');
+    extractedCode = urlParams.get('code');
+    extractedCodeVerifier = urlParams.get('code_verifier');
     
     // If not in query params, check hash fragment
-    if (!code && window.location.hash) {
+    if (!extractedCode && window.location.hash) {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      code = hashParams.get('code');
+      extractedCode = hashParams.get('code');
+      extractedCodeVerifier = hashParams.get('code_verifier');
     }
     
-    console.log('Parsed code:', code);
+    console.log('Parsed code:', extractedCode);
+    console.log('Parsed code_verifier:', extractedCodeVerifier);
     
-    // Accept the code if it exists
-    if (code) {
-      setToken(code);
+    if (extractedCode) {
+      setCode(extractedCode);
+      setCodeVerifier(extractedCodeVerifier);
     } else {
       setError('Invalid or expired reset link. Please request a new password reset link from the app.');
     }
@@ -69,24 +75,34 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      // Use backend API to handle password reset (bypasses PKCE code verifier requirement)
-      console.log('Calling reset password API...');
-      const response = await fetch('/api/reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code: token,
-          password: password,
-        }),
+      // Use official Supabase PKCE flow
+      // The code_verifier is required for PKCE authentication
+      console.log('Exchanging code for session with PKCE...');
+      
+      if (!code) {
+        throw new Error('Missing reset code');
+      }
+
+      // Exchange the authorization code for a session
+      // This requires the code_verifier from the URL
+      const { data: exchangeData, error: exchangeError } = 
+        await supabase.auth.exchangeCodeForSession(code, codeVerifier || undefined);
+      
+      if (exchangeError) {
+        console.error('Session error:', exchangeError);
+        throw new Error(exchangeError.message || 'Invalid or expired reset link');
+      }
+
+      console.log('Session created successfully');
+
+      // Update the password using the established session
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password,
       });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error('API error:', result);
-        throw new Error(result.error || 'Failed to update password');
+      if (updateError) {
+        console.error('Update error:', updateError);
+        throw updateError;
       }
 
       console.log('Password updated successfully');
@@ -135,7 +151,7 @@ export default function ResetPasswordPage() {
             </div>
           )}
 
-          {!token ? (
+          {!code ? (
             <div className="text-center">
               <p className="text-red-600 mb-4">Invalid or expired reset link</p>
               <p className="text-sm text-[#8a8a80] mb-4">
