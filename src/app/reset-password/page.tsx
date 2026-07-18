@@ -17,7 +17,20 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     let mounted = true;
 
-    async function checkSession() {
+    async function checkSession() { 
+      const params = new URLSearchParams(window.location.search);
+
+if (params.get('expired') === 'true') {
+  setLoading(false);
+  setSessionReady(false);
+  setError(
+    'This password reset link has expired or has already been used. Please request a new password reset email from the PRO mobile app.'
+  );
+  return;
+}
+
+
+      
       console.log('=== RESET PAGE ===');
 
       const sessionResult = await supabase.auth.getSession();
