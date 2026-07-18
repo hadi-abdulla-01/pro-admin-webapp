@@ -181,12 +181,21 @@ export default function ResetPasswordPage() {
           // Recovery flow: code with type=recovery, no code_verifier needed
           // For Supabase recovery, code IS the token_hash, use verifyOtp
           console.log('Verifying recovery code with verifyOtp...');
+          
+          // Use the type from URL if available, otherwise default to 'recovery'
+          const otpType = type || 'recovery';
+          
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: code,
-            type: 'recovery',
+            type: otpType,
           });
           if (verifyError) {
-            throw new Error(verifyError.message || 'Invalid or expired recovery link. Please request a new one from the app.');
+            // Enhanced error message with more details
+            console.error('verifyOtp error details:', verifyError);
+            throw new Error(
+              verifyError.message || 
+              `Invalid or expired recovery link. ${otpType === 'recovery' ? 'Please request a new password reset link from the PRO app.' : 'Please check the link and try again.'}`
+            );
           }
         }
       } else {
