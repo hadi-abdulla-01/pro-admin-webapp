@@ -44,7 +44,9 @@ export default function ResetPasswordPage() {
     
     console.log('Parsed params:', { code, type });
     
-    if (code && type === 'recovery') {
+    // Accept the code if it exists, even without type parameter
+    // We're on the reset-password page, so we know it's a recovery flow
+    if (code) {
       // Store the code - we'll exchange it for a session when user submits the form
       setToken(code);
       
