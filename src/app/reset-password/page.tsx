@@ -193,7 +193,6 @@ export default function ResetPasswordPage() {
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: code,
             type: otpType,
-            redirect_to: redirectUrl,
           });
           if (verifyError) {
             // Enhanced error message with more details
