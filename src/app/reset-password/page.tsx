@@ -69,29 +69,24 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      // Exchange the code for a session (PKCE flow)
-      console.log('Exchanging code for session...');
-      const { error: sessionError } = await supabase.auth.exchangeCodeForSession(token!);
-      
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        // Handle PKCE error specifically
-        if (sessionError.message?.includes('code verifier')) {
-          throw new Error('Invalid or expired reset link. Please request a new password reset link from the app.');
-        }
-        throw sessionError;
-      }
-
-      console.log('Session created successfully');
-
-      // Update the password
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: password,
+      // Use backend API to handle password reset (bypasses PKCE code verifier requirement)
+      console.log('Calling reset password API...');
+      const response = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: token,
+          password: password,
+        }),
       });
 
-      if (updateError) {
-        console.error('Update error:', updateError);
-        throw updateError;
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('API error:', result);
+        throw new Error(result.error || 'Failed to update password');
       }
 
       console.log('Password updated successfully');
