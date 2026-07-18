@@ -2,49 +2,73 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
 
 export default function ResetPasswordPage() {
-  const router = useRouter();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const [code, setCode] = useState<string | null>(null);
+  const [ready, setReady] = useState(false); // true when we have a valid session or token to work with
+
+  // Store what we parsed from the URL
+  const [authMethod, setAuthMethod] = useState<'session' | 'token_hash' | 'code' | null>(null);
   const [tokenHash, setTokenHash] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
 
   useEffect(() => {
-    // Extract code and token_hash from URL (supports both query params and hash fragment)
-    let extractedCode: string | null = null;
-    let extractedTokenHash: string | null = null;
-    
-    console.log('Full URL:', window.location.href);
-    console.log('Search params:', window.location.search);
-    console.log('Hash:', window.location.hash);
-    
-    // Check query parameters first
-    const urlParams = new URLSearchParams(window.location.search);
-    extractedCode = urlParams.get('code');
-    extractedTokenHash = urlParams.get('token_hash');
-    
-    // If not in query params, check hash fragment
-    if (!extractedCode && !extractedTokenHash && window.location.hash) {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      extractedCode = hashParams.get('code');
-      extractedTokenHash = hashParams.get('token_hash');
+    const url = window.location.href;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+
+    console.log('Reset password URL:', url);
+
+    // ─── Priority 1: Hash fragment with access_token (Supabase default implicit flow) ───
+    // Supabase default email sends: #access_token=xxx&refresh_token=yyy&type=recovery
+    const accessToken = hashParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token');
+    const type = hashParams.get('type') || searchParams.get('type');
+
+    if (accessToken && refreshToken && type === 'recovery') {
+      console.log('Detected implicit flow with access_token in hash');
+      // Directly set the session using the tokens from the URL — no code_verifier needed
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ error: sessionError }) => {
+          if (sessionError) {
+            console.error('Session error:', sessionError);
+            setError('Invalid or expired reset link. Please request a new one from the app.');
+          } else {
+            console.log('Session set successfully via access_token');
+            setAuthMethod('session');
+            setReady(true);
+          }
+        });
+      return;
     }
-    
-    console.log('Parsed code:', extractedCode);
-    console.log('Parsed token_hash:', extractedTokenHash);
-    
-    if (extractedCode) {
-      setCode(extractedCode);
-    } else if (extractedTokenHash) {
+
+    // ─── Priority 2: token_hash query param (customized email template) ───
+    const extractedTokenHash = searchParams.get('token_hash');
+    if (extractedTokenHash && type === 'recovery') {
+      console.log('Detected token_hash in query params');
       setTokenHash(extractedTokenHash);
-    } else {
-      setError('Invalid or expired reset link. Please request a new password reset link from the app.');
+      setAuthMethod('token_hash');
+      setReady(true);
+      return;
     }
+
+    // ─── Priority 3: PKCE code in query param (same-browser web flow) ───
+    const extractedCode = searchParams.get('code');
+    if (extractedCode) {
+      console.log('Detected PKCE code in query params');
+      setCode(extractedCode);
+      setAuthMethod('code');
+      setReady(true);
+      return;
+    }
+
+    // Nothing valid found
+    console.error('No valid reset token found in URL');
+    setError('Invalid or expired reset link. Please request a new password reset link from the app.');
   }, []);
 
   const validatePassword = (pwd: string): string | null => {
@@ -75,54 +99,54 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      if (tokenHash) {
-        // Option 1: Cross-Client Recovery Flow (Initiated in Flutter, verified on Next.js browser via direct token_hash link)
-        console.log('Verifying token hash...');
+      // ─── Establish session based on auth method ───
+      if (authMethod === 'session') {
+        // Session already set in useEffect via setSession() — nothing to do here
+        console.log('Using pre-established session from access_token');
+      } else if (authMethod === 'token_hash' && tokenHash) {
+        // Verify OTP token hash (customized email template)
+        console.log('Verifying token_hash...');
         const { error: verifyError } = await supabase.auth.verifyOtp({
           token_hash: tokenHash,
           type: 'recovery',
         });
-        
         if (verifyError) {
-          console.error('OTP Verification error:', verifyError);
           throw new Error(verifyError.message || 'Invalid or expired recovery token');
         }
-      } else if (code) {
-        // Option 2: Standard PKCE Authorization Code Flow (Initiated and completed in the same browser)
-        console.log('Exchanging code for session...');
+      } else if (authMethod === 'code' && code) {
+        // PKCE code exchange (only works if initiated in same browser)
+        console.log('Exchanging PKCE code for session...');
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-        
         if (exchangeError) {
-          console.error('Session exchange error:', exchangeError);
-          throw new Error(exchangeError.message || 'Invalid or expired reset link');
+          throw new Error(exchangeError.message || 'Invalid or expired reset link. Try requesting a new link from the app.');
         }
       } else {
-        throw new Error('No valid code or token hash found in the link. Please request a new link.');
+        throw new Error('No valid reset credentials found. Please request a new link from the app.');
       }
 
-      console.log('Session established successfully');
-
-      // Update the password using the established session
+      // ─── Update the password ───
+      console.log('Updating password...');
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
       });
 
       if (updateError) {
-        console.error('Password update error:', updateError);
-        throw updateError;
+        throw new Error(updateError.message || 'Failed to update password');
       }
 
       console.log('Password updated successfully');
-      setSuccess('Password updated successfully! Redirecting to login...');
-      
-      // Sign out the user from the current recovery session and redirect to login page
+      setSuccess('Password updated successfully! You can now log in to the app with your new password.');
+
+      // ─── Sign out recovery session and redirect to Flutter app ───
       setTimeout(async () => {
         await supabase.auth.signOut();
-        router.push('/login');
-      }, 2000);
+        // Redirect to Flutter app via deep link (proappadmin scheme)
+        window.location.href = 'proappadmin://login';
+      }, 2500);
+
     } catch (err: any) {
-      console.error('Error:', err);
-      setError(err.message || 'Failed to update password');
+      console.error('Password reset error:', err);
+      setError(err.message || 'Failed to update password. Please request a new reset link.');
     } finally {
       setLoading(false);
     }
@@ -158,14 +182,15 @@ export default function ResetPasswordPage() {
             </div>
           )}
 
-          {!code && !tokenHash ? (
-            <div className="text-center">
-              <p className="text-red-600 mb-4">Invalid or expired reset link</p>
-              <p className="text-sm text-[#8a8a80] mb-4">
-                Please request a new password reset link from the app.
-              </p>
+          {/* Show form only when we have a valid token/session and no success yet */}
+          {!ready && !error && (
+            <div className="text-center py-6">
+              <div className="inline-block w-8 h-8 border-4 border-[#316342] border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-[#8a8a80] text-sm mt-3">Verifying reset link...</p>
             </div>
-          ) : (
+          )}
+
+          {ready && !success && (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-[#2b2b26] mb-2">
@@ -179,6 +204,7 @@ export default function ResetPasswordPage() {
                   placeholder="Enter new password"
                   required
                   minLength={8}
+                  disabled={loading}
                 />
                 <p className="mt-1 text-xs text-[#8a8a80]">
                   Must be 8+ characters with uppercase, lowercase, number, and special character
@@ -197,6 +223,7 @@ export default function ResetPasswordPage() {
                   placeholder="Confirm new password"
                   required
                   minLength={8}
+                  disabled={loading}
                 />
               </div>
 
@@ -208,6 +235,15 @@ export default function ResetPasswordPage() {
                 {loading ? 'Updating...' : 'Update Password'}
               </button>
             </form>
+          )}
+
+          {/* If error and no token, show link prompt */}
+          {error && !ready && (
+            <div className="text-center mt-4">
+              <p className="text-sm text-[#8a8a80]">
+                Open the PRO app and use &quot;Forgot Password&quot; to request a new link.
+              </p>
+            </div>
           )}
         </div>
 
