@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function ResetPasswordPage() {
@@ -16,6 +16,7 @@ export default function ResetPasswordPage() {
   const [tokenHash, setTokenHash] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [codeVerifier, setCodeVerifier] = useState<string | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const url = window.location.href;
@@ -23,6 +24,8 @@ export default function ResetPasswordPage() {
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
 
     console.log('Reset password URL:', url);
+    console.log('Hash params:', Object.fromEntries(hashParams.entries()));
+    console.log('Search params:', Object.fromEntries(searchParams.entries()));
 
     // ─── Priority 1: Hash fragment or query params with access_token (Supabase implicit flow) ───
     // Supabase default email sends: #access_token=xxx&refresh_token=yyy&type=recovery
@@ -35,15 +38,19 @@ export default function ResetPasswordPage() {
       console.log('Detected implicit flow with access_token');
       // Directly set the session using the tokens from the URL — no code_verifier needed
       supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
-        .then(({ error: sessionError }) => {
+        .then(({ error: sessionError, data }) => {
           if (sessionError) {
             console.error('Session error:', sessionError);
-            setError('Invalid or expired reset link. Please request a new one from the app.');
+            setError(`Session error: ${sessionError.message || 'Invalid tokens'}. Please request a new password reset link from the app.`);
           } else {
-            console.log('Session set successfully via access_token');
+            console.log('Session set successfully via access_token, session:', data.session);
             setAuthMethod('session');
             setReady(true);
           }
+        })
+        .catch((err) => {
+          console.error('Error setting session:', err);
+          setError(`Failed to set session: ${err.message || err.toString()}. Please request a new link.`);
         });
       return;
     }
@@ -96,6 +103,19 @@ export default function ResetPasswordPage() {
     // Nothing valid found
     console.error('No valid reset token found in URL');
     setError('Invalid or expired reset link. Please request a new password reset link from the app.');
+    // Set a timeout to prevent infinite loading
+    timeoutRef.current = setTimeout(() => {
+      if (!ready && !error) {
+        console.error('Timeout: Reset link verification taking too long');
+        setError('Reset link verification timed out. Please check the URL and try again.');
+      }
+    }, 10000); // 10 second timeout
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
   }, []);
 
   const validatePassword = (pwd: string): string | null => {
