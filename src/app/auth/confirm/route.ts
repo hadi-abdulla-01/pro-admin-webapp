@@ -18,9 +18,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Prevent CDN caching or browser prefetch from consuming the one-time token
+  // on a "background" request before the user's actual navigation arrives.
+  // This header tells every intermediary: do not cache, do not store.
+
   const cookieStore = await cookies();
 
-  let response = NextResponse.redirect(`${origin}${next}`);
+  // Collect cookies written by Supabase during verifyOtp so we can apply
+  // them to whichever response we end up returning (success or error).
+  const pendingCookies: { name: string; value: string; options: Record<string, unknown> }[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,10 +36,10 @@ export async function GET(request: NextRequest) {
         getAll() {
           return cookieStore.getAll();
         },
-
         setAll(cookiesToSet) {
+          // Buffer cookies — we'll apply them after we know the outcome.
           cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
+            pendingCookies.push({ name, value, options: options as Record<string, unknown> });
           });
         },
       },
@@ -45,20 +51,27 @@ export async function GET(request: NextRequest) {
     token_hash,
   });
 
-  console.log('verifyOtp result:', {
-    data,
-    error,
+  console.log('verifyOtp result:', { data, error });
+
+  if (error) {
+    console.error('verifyOtp failed:', error);
+    // Single-use token was already consumed, or the link genuinely expired.
+    const errResponse = NextResponse.redirect(`${origin}/reset-link-expired`);
+    errResponse.headers.set('Cache-Control', 'no-store');
+    return errResponse;
+  }
+
+  // Build the success response only after we know verifyOtp succeeded,
+  // then attach the session cookies Supabase wrote during the call.
+  const response = NextResponse.redirect(`${origin}${next}`);
+  response.headers.set('Cache-Control', 'no-store');
+
+  pendingCookies.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2]);
   });
-if (error) {
-  console.error('verifyOtp failed:', error);
 
-  return NextResponse.redirect(
-    `${origin}/reset-link-expired`
-  );
-}
-  
-console.log('verifyOtp succeeded');
-console.log('Cookies being returned:', response.cookies.getAll());
+  console.log('verifyOtp succeeded');
+  console.log('Cookies being returned:', response.cookies.getAll());
 
-return response;
+  return response;
 }
