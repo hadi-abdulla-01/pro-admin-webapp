@@ -242,9 +242,13 @@ export default function ResetPasswordPage() {
             console.error('Supabase URL:', window.location.href);
             console.error('Code:', code);
             console.error('Type:', otpType);
+            const errorMessage = 
+              (verifyError as any)?.message || 
+              (verifyError as any)?.error_description ||
+              verifyError?.toString() ||
+              'Unknown error';
             throw new Error(
-              verifyError.message || verifyError.toString() || 
-              `Invalid or expired recovery link. Please request a new password reset link from the PRO app.`
+              errorMessage + '. Please request a new password reset link from the PRO app.'
             );
           }
         }
