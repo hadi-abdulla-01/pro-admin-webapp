@@ -18,28 +18,30 @@ export default function ResetPasswordPage() {
   let mounted = true;
 
   async function checkSession() {
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
+    console.log("=== RESET PAGE ===");
+
+    const sessionResult = await supabase.auth.getSession();
+    console.log("getSession:", sessionResult);
+
+    const userResult = await supabase.auth.getUser();
+    console.log("getUser:", userResult);
 
     if (!mounted) return;
 
-    if (error) {
-      setError(error.message);
+    const session = sessionResult.data.session;
+
+    if (session) {
+      console.log("Session found!");
+      setSessionReady(true);
       setLoading(false);
       return;
     }
 
-    if (!session) {
-      setError(
-        'Invalid or expired password reset link. Please request a new one.'
-      );
-      setLoading(false);
-      return;
-    }
+    console.log("No session found");
 
-    setSessionReady(true);
+    setError(
+      "Invalid or expired password reset link. Please request a new one."
+    );
     setLoading(false);
   }
 
