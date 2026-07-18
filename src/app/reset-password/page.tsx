@@ -187,16 +187,23 @@ export default function ResetPasswordPage() {
           // Use the recoveryType from state (set in useEffect)
           const otpType = recoveryType || 'recovery';
           
+          const redirectUrl = window.location.origin + window.location.pathname;
+          console.log('verifyOtp params: token_hash=', code, 'type=', otpType, 'redirect_to=', redirectUrl);
+          
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: code,
             type: otpType,
+            redirect_to: redirectUrl,
           });
           if (verifyError) {
             // Enhanced error message with more details
             console.error('verifyOtp error details:', verifyError);
+            console.error('Supabase URL:', window.location.href);
+            console.error('Code:', code);
+            console.error('Type:', otpType);
             throw new Error(
               verifyError.message || 
-              `Invalid or expired recovery link. ${otpType === 'recovery' ? 'Please request a new password reset link from the PRO app.' : 'Please check the link and try again.'}`
+              `Invalid or expired recovery link. ${otpType === 'recovery' ? 'Please request a new password reset link from the PRO app. If this persists, the Supabase project in your Flutter app and web app may be different.' : 'Please check the link and try again.'}`
             );
           }
         }
