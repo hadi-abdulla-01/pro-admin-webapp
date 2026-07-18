@@ -11,5 +11,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     storage: typeof window !== 'undefined' ? localStorage : undefined,
     flowType: 'pkce',
+    siteUrl: 'https://proappadmin.netlify.app',
   },
 });
