@@ -59,6 +59,6 @@ export async function GET(request: NextRequest) {
   }
 
   console.log('verifyOtp succeeded');
-
+console.log("Cookies being returned:", response.cookies.getAll());
   return response;
 }
