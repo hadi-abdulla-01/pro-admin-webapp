@@ -16,6 +16,7 @@ export default function ResetPasswordPage() {
   const [tokenHash, setTokenHash] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [codeVerifier, setCodeVerifier] = useState<string | null>(null);
+  const [recoveryType, setRecoveryType] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function ResetPasswordPage() {
     const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
     const refreshToken = hashParams.get('refresh_token') || searchParams.get('refresh_token');
     const type = hashParams.get('type') || searchParams.get('type');
+    setRecoveryType(type);
 
     if (accessToken && refreshToken && type === 'recovery') {
       console.log('Detected implicit flow with access_token');
@@ -182,8 +184,8 @@ export default function ResetPasswordPage() {
           // For Supabase recovery, code IS the token_hash, use verifyOtp
           console.log('Verifying recovery code with verifyOtp...');
           
-          // Use the type from URL if available, otherwise default to 'recovery'
-          const otpType = type || 'recovery';
+          // Use the recoveryType from state (set in useEffect)
+          const otpType = recoveryType || 'recovery';
           
           const { error: verifyError } = await supabase.auth.verifyOtp({
             token_hash: code,
