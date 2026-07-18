@@ -56,3 +56,9 @@ if (error) {
     `${origin}/reset-link-expired`
   );
 }
+  
+console.log('verifyOtp succeeded');
+console.log('Cookies being returned:', response.cookies.getAll());
+
+return response;
+}
