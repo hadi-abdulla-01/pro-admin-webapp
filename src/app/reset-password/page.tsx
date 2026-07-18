@@ -68,19 +68,20 @@ export default function ResetPasswordPage() {
     // ─── Priority 3: Handle code parameter ───
     const extractedCode = searchParams.get('code');
     
-    // For recovery flow: Supabase sends ?code=XXX&type=recovery
+    // For recovery flow: Supabase sends ?code=XXX&type=recovery (or just ?code=XXX)
     // This is VALID - for recovery, the code IS the token_hash, use verifyOtp()
-    if (extractedCode && type === 'recovery') {
-      console.log('Detected recovery flow with code parameter');
+    // Treat any code parameter as recovery flow if there's no type or type=recovery
+    if (extractedCode && (type === 'recovery' || type === null || type === '')) {
+      console.log('Detected recovery flow with code parameter, type:', type);
       setCode(extractedCode);
       setAuthMethod('code');
       setReady(true);
       return;
     }
     
-    // For PKCE flow (non-recovery): code without type or type !== recovery
-    if (extractedCode && type !== 'recovery') {
-      console.log('Detected PKCE code in query params (non-recovery flow)');
+    // For PKCE flow (non-recovery): code with type that is NOT recovery
+    if (extractedCode && type !== null && type !== '' && type !== 'recovery') {
+      console.log('Detected PKCE code in query params (non-recovery flow), type:', type);
       
       // Try to get code_verifier from URL params first, then sessionStorage
       const urlCodeVerifier = searchParams.get('code_verifier');
