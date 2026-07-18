@@ -58,11 +58,12 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    // ─── Priority 3: PKCE code in query param (same-browser web flow) ───
+    // ─── Priority 3: PKCE code in query param (ONLY for non-recovery flows) ───
+    // For password reset (recovery), Supabase uses implicit flow with access_token in hash,
+    // NOT PKCE with code. So we only use code path for non-recovery auth flows.
     const extractedCode = searchParams.get('code');
-    // Only use code if it's a recovery flow (type=recovery) or if there's no type but we have a code
-    if (extractedCode && (type === 'recovery' || !type)) {
-      console.log('Detected PKCE code in query params');
+    if (extractedCode && type !== 'recovery') {
+      console.log('Detected PKCE code in query params (non-recovery flow)');
       
       // Try to get code_verifier from URL params first, then sessionStorage
       const urlCodeVerifier = searchParams.get('code_verifier');
@@ -72,13 +73,23 @@ export default function ResetPasswordPage() {
       if (verifier) {
         console.log('Found code_verifier');
         setCodeVerifier(verifier);
+        setCode(extractedCode);
+        setAuthMethod('code');
+        setReady(true);
       } else {
-        console.warn('No code_verifier found in URL or sessionStorage');
+        console.error('PKCE code found but no code_verifier - invalid auth flow');
+        // Don't set as ready, will fall through to error below
       }
-      
-      setCode(extractedCode);
-      setAuthMethod('code');
-      setReady(true);
+      return;
+    }
+    
+    // Special case: If there's a code parameter with type=recovery, this is an invalid
+    // password reset link. Supabase should send access_token in hash, not code.
+    // This can happen with misconfigured email templates.
+    if (extractedCode && type === 'recovery') {
+      console.error('Invalid password reset link: received code parameter instead of access_token');
+      console.error('URL should have #access_token=...&refresh_token=...&type=recovery');
+      setError('Invalid password reset link. Please request a new link from the app. The link should open directly to the reset form without requiring additional verification.');
       return;
     }
 
