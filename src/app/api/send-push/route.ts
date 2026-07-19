@@ -67,9 +67,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ sent: 0, reason: 'no_tokens' });
     }
 
-    const tokens: string[] = users
-      .map((u) => u.fcm_token)
-      .filter((t): t is string => t != null && t.length > 0);
+    // Group tokens by user_id to ensure one notification per user
+    const userTokensMap = new Map<string, string>();
+    for (const user of users) {
+      if (user.fcm_token && user.fcm_token.length > 0) {
+        // If user already has a token, keep the first one (most recent would be better if we had timestamps)
+        if (!userTokensMap.has(user.id)) {
+          userTokensMap.set(user.id, user.fcm_token);
+        }
+      }
+    }
+
+    const tokens: string[] = Array.from(userTokensMap.values());
 
     if (tokens.length === 0) {
       return NextResponse.json({ sent: 0, reason: 'no_tokens' });
