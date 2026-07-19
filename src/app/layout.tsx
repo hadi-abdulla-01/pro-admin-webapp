@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "PRO Services Portal - Enterprise Admin",
-  description: "Enterprise administration dashboard for corporate PRO services in the UAE.",
+  title: "Amanah - Enterprise Admin",
+  description: "Enterprise administration dashboard for Amanah document management in the UAE.",
 };
 
 export default function RootLayout({

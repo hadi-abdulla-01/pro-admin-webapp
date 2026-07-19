@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { type EmailOtpType } from '@supabase/supabase-js';
 
@@ -46,7 +47,7 @@ export default function ResetPasswordPage() {
 
         if (otpError || !data.session) {
           setError(
-            'This password reset link has expired or has already been used. Please request a new one from the PRO mobile app.'
+            'This password reset link has expired or has already been used. Please request a new one from the Amanah mobile app.'
           );
           setLoading(false);
           return;
@@ -98,7 +99,7 @@ export default function ResetPasswordPage() {
         subscription.unsubscribe();
         console.log('Timed out waiting for session');
         setError(
-          'This password reset link has expired or has already been used. Please request a new one from the PRO mobile app.'
+          'This password reset link has expired or has already been used. Please request a new one from the Amanah mobile app.'
         );
         setLoading(false);
       }, 5000);
@@ -152,7 +153,7 @@ export default function ResetPasswordPage() {
       if (error) throw error;
       console.log('Password updated:', data);
       setSuccess(
-        'Password updated successfully! You can now close this page and sign in from the PRO mobile app with your new password.'
+        'Password updated successfully! You can now close this page and sign in from the Amanah mobile app with your new password.'
       );
       await supabase.auth.signOut();
       setSessionReady(false);
@@ -168,18 +169,23 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f5f5f0] to-[#e8ecde] p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-[#316342] rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-2xl">PR</span>
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-20 h-20 flex items-center justify-center mb-4 bg-white rounded-2xl shadow-md p-2 border border-border-subtle">
+              <Image
+                src="/Amanah.svg"
+                alt="Amanah"
+                width={64}
+                height={64}
+                className="object-contain w-full h-full"
+              />
             </div>
+            <h1 className="text-3xl font-bold text-center text-[#2b2b26] mb-2">
+              Reset Password
+            </h1>
+            <p className="text-center text-[#316342] text-sm font-semibold tracking-wide uppercase">
+              All Your Documents, One Platform
+            </p>
           </div>
-
-          <h1 className="text-3xl font-bold text-center text-[#2b2b26] mb-2">
-            Reset Password
-          </h1>
-          <p className="text-center text-[#8a8a80] mb-8">
-            Create a new password for your account
-          </p>
 
           {loading && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -209,7 +215,7 @@ export default function ResetPasswordPage() {
               <div className="bg-[#f5f5f0] rounded-lg p-4">
                 <p className="text-sm text-[#444]">
                   You can now close this page and return to the{' '}
-                  <strong>PRO mobile app</strong>, then sign in using your new password.
+                  <strong>Amanah mobile app</strong>, then sign in using your new password.
                 </p>
               </div>
             </div>
@@ -223,7 +229,7 @@ export default function ResetPasswordPage() {
                   This password reset link has expired or has already been used.
                 </p>
                 <p className="text-sm text-[#8a8a80] mt-2">
-                  Please request a new password reset email from the PRO mobile app.
+                  Please request a new password reset email from the Amanah mobile app.
                 </p>
               </div>
             ) : null
@@ -277,7 +283,7 @@ export default function ResetPasswordPage() {
         </div>
 
         <p className="text-center text-sm text-[#8a8a80] mt-6">
-          © 2024 PRO Services. All rights reserved.
+          © 2024 Amanah. All rights reserved.
         </p>
       </div>
     </div>

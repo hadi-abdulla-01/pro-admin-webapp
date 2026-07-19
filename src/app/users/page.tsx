@@ -272,7 +272,7 @@ export default function UsersRolesPage() {
                             <span>{user.company_groups.name}</span>
                           </span>
                         ) : (
-                          <span className="italic text-xs font-normal text-on-surface-variant">Internal Staff (PRO)</span>
+                          <span className="italic text-xs font-normal text-on-surface-variant">Internal Staff (Amanah)</span>
                         )}
                       </td>
                       <td className="p-lg text-center">

@@ -9,12 +9,12 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [newProName, setNewProName] = useState('');
   
-  const [sysName, setSysName] = useState('UAE PRO Services Portal');
-  const [alertEmail, setAlertEmail] = useState('alerts@proportal.ae');
+  const [sysName, setSysName] = useState('Amanah Services Portal');
+  const [alertEmail, setAlertEmail] = useState('alerts@amanah.ae');
   const [gracePeriod, setGracePeriod] = useState(30);
   const [whatsappNum, setWhatsappNum] = useState('+971 50 000 0000');
   const [phoneNum, setPhoneNum] = useState('+971 4 000 0000');
-  const [adminCompanyName, setAdminCompanyName] = useState('PRO Services');
+  const [adminCompanyName, setAdminCompanyName] = useState('Amanah Services');
   const [adminCompanyLogoUrl, setAdminCompanyLogoUrl] = useState('');
   const [adminCompanyLogoFile, setAdminCompanyLogoFile] = useState<File | null>(null);
 

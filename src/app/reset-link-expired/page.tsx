@@ -13,7 +13,7 @@ export default function ResetLinkExpiredPage() {
         </p>
 
         <p className="mt-2 text-gray-600">
-          Please request a new password reset email from the PRO mobile app.
+          Please request a new password reset email from the Amanah mobile app.
         </p>
       </div>
     </main>
