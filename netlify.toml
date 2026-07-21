@@ -5,8 +5,12 @@
   functions = ".netlify/functions"
 
 [functions]
-  external_node_modules = ["@opentelemetry/api"]
   node_bundler = "esbuild"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_PRIVATE_TARGET = "server"
+  NEXT_TELEMETRY_DISABLED = "1"
 
 # Environment variables
 [build.environment]
