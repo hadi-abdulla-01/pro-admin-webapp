@@ -46,10 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'notification_id required' }, { status: 400 });
     }
 
-    // Check if this notification has already been processed to prevent duplicates
+    // Enhanced duplicate prevention with multiple checks
     const { data: existing, error: checkError } = await supabaseAdmin
       .from('notification_deliveries')
-      .select('id')
+      .select('id, processed_at')
       .eq('notification_id', notification_id)
       .maybeSingle();
 
@@ -60,8 +60,18 @@ export async function POST(request: NextRequest) {
         // Continue processing if the table doesn't exist (backward compatibility)
       }
     } else if (existing) {
-      console.log(`[send-push] Notification ${notification_id} already processed, skipping`);
-      return NextResponse.json({ skipped: true, reason: 'already_processed' });
+      // Check if the notification was processed recently (within last 5 minutes)
+      const processedAt = new Date(existing.processed_at);
+      const now = new Date();
+      const minutesSinceProcessed = (now.getTime() - processedAt.getTime()) / (1000 * 60);
+      
+      if (minutesSinceProcessed < 5) {
+        console.log(`[send-push] Notification ${notification_id} already processed ${minutesSinceProcessed.toFixed(1)} minutes ago, skipping`);
+        return NextResponse.json({ skipped: true, reason: 'already_processed' });
+      } else {
+        // If it's an old record, update it rather than creating a duplicate
+        console.log(`[send-push] Notification ${notification_id} was processed ${minutesSinceProcessed.toFixed(1)} minutes ago, updating record`);
+      }
     }
 
     // Determine which users to notify
@@ -85,20 +95,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ sent: 0, reason: 'no_tokens' });
     }
 
+    console.log(`[send-push] Processing notification ${notification_id} for ${users.length} users`);
+
     // Group tokens by user_id to ensure one notification per user
-    const userTokensMap = new Map<string, string>();
+    const userTokensMap = new Map<string, string[]>();
     for (const user of users) {
       if (user.fcm_token && user.fcm_token.length > 0) {
-        // If user already has a token, keep the first one (most recent would be better if we had timestamps)
+        // Collect all tokens for each user
         if (!userTokensMap.has(user.id)) {
-          userTokensMap.set(user.id, user.fcm_token);
+          userTokensMap.set(user.id, []);
         }
+        userTokensMap.get(user.id)?.push(user.fcm_token);
       }
     }
 
-    const tokens: string[] = Array.from(userTokensMap.values());
+    // For each user, use only their most recent token (last one in the array)
+    const tokens: string[] = Array.from(userTokensMap.values())
+      .map(tokenArray => tokenArray[tokenArray.length - 1]); // Use the last (most recent) token
 
-    if (tokens.length === 0) {
+    // Log token deduplication results
+    const totalTokensBeforeDedup = Array.from(userTokensMap.values()).reduce((sum, tokens) => sum + tokens.length, 0);
+    console.log(`[send-push] Token deduplication: ${totalTokensBeforeDedup} tokens → ${tokens.length} unique users`);
+
+    // Additional deduplication: remove duplicate tokens (same token for different users)
+    const uniqueTokens = [...new Set(tokens)];
+    if (uniqueTokens.length < tokens.length) {
+      console.log(`[send-push] Removed ${tokens.length - uniqueTokens.length} duplicate tokens`);
+    }
+
+    if (uniqueTokens.length === 0) {
       return NextResponse.json({ sent: 0, reason: 'no_tokens' });
     }
 
@@ -129,7 +154,9 @@ export async function POST(request: NextRequest) {
     let failed = 0;
     const errors: string[] = [];
 
-    for (const token of tokens) {
+    console.log(`[send-push] Sending to ${uniqueTokens.length} unique devices`);
+
+    for (const token of uniqueTokens) {
       const payload = {
         message: {
           token,
@@ -188,7 +215,8 @@ export async function POST(request: NextRequest) {
             notification_id: notification_id,
             sent_count: sent,
             failed_count: failed,
-            total_count: tokens.length,
+            total_count: uniqueTokens.length,
+            users_count: userTokensMap.size,
             processed_at: new Date().toISOString(),
           },
         ]);
@@ -217,7 +245,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ sent, failed, total: tokens.length, errors: errors.slice(0, 5) });
+    return NextResponse.json({ sent, failed, total: uniqueTokens.length, users: userTokensMap.size, errors: errors.slice(0, 5) });
   } catch (err: any) {
     console.error('[send-push] Error:', err);
     return NextResponse.json({ error: err.message || 'Unknown error', stack: err.stack }, { status: 500 });

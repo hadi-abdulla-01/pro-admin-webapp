@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.notification_deliveries (
   sent_count INTEGER NOT NULL DEFAULT 0,
   failed_count INTEGER NOT NULL DEFAULT 0,
   total_count INTEGER NOT NULL DEFAULT 0,
+  users_count INTEGER NOT NULL DEFAULT 0,
   processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT notification_deliveries_unique_notification UNIQUE (notification_id)
