@@ -46,6 +46,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'notification_id required' }, { status: 400 });
     }
 
+    // Check if this notification has already been processed to prevent duplicates
+    const { data: existing, error: checkError } = await supabaseAdmin
+      .from('notification_deliveries')
+      .select('id')
+      .eq('notification_id', notification_id)
+      .maybeSingle();
+
+    if (checkError) {
+      const error = checkError as Error;
+      if (!error.message.includes('relation "notification_deliveries" does not exist')) {
+        console.error('[send-push] Error checking for duplicates:', error);
+        // Continue processing if the table doesn't exist (backward compatibility)
+      }
+    } else if (existing) {
+      console.log(`[send-push] Notification ${notification_id} already processed, skipping`);
+      return NextResponse.json({ skipped: true, reason: 'already_processed' });
+    }
+
     // Determine which users to notify
     let query = supabaseAdmin
       .from('users')
@@ -158,6 +176,44 @@ export async function POST(request: NextRequest) {
         console.error(`[send-push] ${errMsg}`);
         errors.push(errMsg);
         failed++;
+      }
+    }
+
+    // Record successful delivery to prevent duplicates
+    try {
+      await supabaseAdmin
+        .from('notification_deliveries')
+        .insert([
+          {
+            notification_id: notification_id,
+            sent_count: sent,
+            failed_count: failed,
+            total_count: tokens.length,
+            processed_at: new Date().toISOString(),
+          },
+        ]);
+    } catch (recordError) {
+      const error = recordError as Error;
+      // If the table doesn't exist, we'll create it (for backward compatibility)
+      if (error.message.includes('relation "notification_deliveries" does not exist')) {
+        try {
+          await supabaseAdmin
+            .from('notification_deliveries')
+            .insert([
+              {
+                notification_id: notification_id,
+                sent_count: sent,
+                failed_count: failed,
+                total_count: tokens.length,
+                processed_at: new Date().toISOString(),
+              },
+            ])
+            .select();
+        } catch (createError) {
+          console.error('[send-push] Could not create notification_deliveries record:', createError);
+        }
+      } else {
+        console.error('[send-push] Could not record notification delivery:', error);
       }
     }
 

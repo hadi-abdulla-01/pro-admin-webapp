@@ -78,16 +78,25 @@ export default function NotificationsConfigPage() {
 
       // 2. Send FCM push (fire-and-forget — non-blocking)
       if (notificationId) {
-        fetch('/api/send-push', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            notification_id: notificationId,
-            company_id: fields.company_id || null,
-            title: fields.title,
-            message: fields.message,
-          }),
-        }).catch((e) => console.error('Push send error:', e));
+        try {
+          const response = await fetch('/api/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              notification_id: notificationId,
+              company_id: fields.company_id || null,
+              title: fields.title,
+              message: fields.message,
+            }),
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Push send error:', errorData);
+          }
+        } catch (e) {
+          console.error('Push send error:', e);
+        }
       }
     },
     onSuccess: () => {
