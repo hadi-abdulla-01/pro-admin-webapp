@@ -118,7 +118,7 @@ function LoginForm() {
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary ${
                 errors.email ? 'border-danger focus:ring-danger' : 'border-border-subtle'
               }`}
-              placeholder="admin@proportal.ae"
+              placeholder="example@gmail.com"
               {...register('email')}
             />
             {errors.email && <p className="mt-1.5 text-danger text-[11px] font-medium">{errors.email.message}</p>}

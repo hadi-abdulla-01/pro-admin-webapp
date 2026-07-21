@@ -50,7 +50,6 @@ export default function FamiliesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-
   const {
     register,
     handleSubmit,
@@ -193,7 +192,7 @@ export default function FamiliesPage() {
   };
 
   // Filter & Search Logic
-  const filteredCompanies = (companies || []).filter((company) => {
+  const orderedCompanies = (companies || []).filter((company) => {
     const matchesSearch = company.name.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || company.status === statusFilter;
@@ -263,110 +262,108 @@ export default function FamiliesPage() {
                   <th className="p-lg text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-subtle font-body-sm text-on-surface">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={7} className="p-xl text-center text-on-surface-variant">
-                      <div className="flex justify-center items-center gap-2">
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></span>
-                        <span>Loading entities...</span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : filteredCompanies.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-xl text-center text-on-surface-variant">
-                      No records found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredCompanies.map((company) => {
-                    const activeEmployees = (company.employees || []).filter((e: any) => e.status === 'active').length;
-                    const pendingRenewals = (company.renewal_requests || []).filter((r: any) => r.status === 'pending' || r.status === 'requested' || r.status === 'in_progress').length;
-                    const isExpired = company.trade_license_expiry && new Date(company.trade_license_expiry) < new Date();
-                    const isIndividual = company.entity_type === 'individual';
+                <tbody className="divide-y divide-border-subtle font-body-sm text-on-surface">
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={7} className="p-xl text-center text-on-surface-variant">
+                        <div className="flex justify-center items-center gap-2">
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></span>
+                          <span>Loading entities...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : orderedCompanies.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-xl text-center text-on-surface-variant">
+                        No records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    orderedCompanies.map((company) => {
+                      const activeEmployees = (company.employees || []).filter((e: any) => e.status === 'active').length;
+                      const pendingRenewals = (company.renewal_requests || []).filter((r: any) => r.status === 'pending' || r.status === 'requested' || r.status === 'in_progress').length;
+                      const isExpired = company.trade_license_expiry && new Date(company.trade_license_expiry) < new Date();
+                      const isIndividual = company.entity_type === 'individual';
 
-                    return (
-                      <tr key={company.id} className="hover:bg-surface-container-lowest transition-colors">
-                        <td className="p-lg">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold font-title-lg ${
-                              isIndividual ? 'bg-accent/10 text-accent' : 'bg-primary/10 text-primary'
-                            }`}>
-                              {company.name.charAt(0).toUpperCase()}
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="font-bold text-on-surface">{company.name}</span>
-                              {company.company_groups ? (
-                                <span className="text-[11px] text-primary font-semibold flex items-center gap-0.5 mt-0.5">
-                                  <span className="material-symbols-outlined text-[12px]">corporate_fare</span>
-                                  <span>{company.company_groups.name}</span>
-                                </span>
-                              ) : (
-                                <span className="text-[11px] text-on-surface-variant flex items-center gap-0.5 mt-0.5">
-                                  <span className="material-symbols-outlined text-[12px]">
-                                    {isIndividual ? 'person' : 'apartment'}
+                      return (
+                        <tr key={company.id} className="hover:bg-surface-container-lowest transition-colors">
+                          <td className="p-lg">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold font-title-lg ${isIndividual ? 'bg-accent/10 text-accent' : 'bg-primary/10 text-primary'
+                                }`}>
+                                {company.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-bold text-on-surface">{company.name}</span>
+                                {company.company_groups ? (
+                                  <span className="text-[11px] text-primary font-semibold flex items-center gap-0.5 mt-0.5">
+                                    <span className="material-symbols-outlined text-[12px]">corporate_fare</span>
+                                    <span>{company.company_groups.name}</span>
                                   </span>
-                                  <span>{isIndividual ? 'Family / Individual' : 'Corporate Member'}</span>
-                                </span>
+                                ) : (
+                                  <span className="text-[11px] text-on-surface-variant flex items-center gap-0.5 mt-0.5">
+                                    <span className="material-symbols-outlined text-[12px]">
+                                      {isIndividual ? 'person' : 'apartment'}
+                                    </span>
+                                    <span>{isIndividual ? 'Family / Individual' : 'Corporate Member'}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-lg font-mono text-on-surface-variant">
+                            {company.trade_license_number || 'N/A'}
+                          </td>
+                          <td className="p-lg">
+                            <div className="flex flex-col">
+                              <span className={isExpired ? 'text-danger font-bold' : 'text-on-surface'}>
+                                {company.trade_license_expiry ? new Date(company.trade_license_expiry).toLocaleDateString() : 'N/A'}
+                              </span>
+                              {isExpired && (
+                                <span className="text-[10px] text-danger font-bold uppercase tracking-wider">EXPIRED</span>
                               )}
                             </div>
-                          </div>
-                        </td>
-                        <td className="p-lg font-mono text-on-surface-variant">
-                          {company.trade_license_number || 'N/A'}
-                        </td>
-                        <td className="p-lg">
-                          <div className="flex flex-col">
-                            <span className={isExpired ? 'text-danger font-bold' : 'text-on-surface'}>
-                              {company.trade_license_expiry ? new Date(company.trade_license_expiry).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="p-lg text-center font-bold">{activeEmployees}</td>
+                          <td className="p-lg text-center font-bold text-warning">{pendingRenewals}</td>
+                          <td className="p-lg text-center">
+                            <span
+                              onClick={() => toggleStatusMutation.mutate({ id: company.id, currentStatus: company.status })}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold cursor-pointer transition-colors ${company.status === 'active'
+                                  ? 'bg-success/10 text-success hover:bg-success/20'
+                                  : 'bg-danger/10 text-danger hover:bg-danger/20'
+                                }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${company.status === 'active' ? 'bg-success' : 'bg-danger'}`}></span>
+                              {company.status === 'active' ? 'Active' : 'Disabled'}
                             </span>
-                            {isExpired && (
-                              <span className="text-[10px] text-danger font-bold uppercase tracking-wider">EXPIRED</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-lg text-center font-bold">{activeEmployees}</td>
-                        <td className="p-lg text-center font-bold text-warning">{pendingRenewals}</td>
-                        <td className="p-lg text-center">
-                          <span
-                            onClick={() => toggleStatusMutation.mutate({ id: company.id, currentStatus: company.status })}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold cursor-pointer transition-colors ${
-                              company.status === 'active'
-                                ? 'bg-success/10 text-success hover:bg-success/20'
-                                : 'bg-danger/10 text-danger hover:bg-danger/20'
-                            }`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${company.status === 'active' ? 'bg-success' : 'bg-danger'}`}></span>
-                            {company.status === 'active' ? 'Active' : 'Disabled'}
-                          </span>
-                        </td>
-                        <td className="p-lg text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-2">
-                            <Link
-                              href={`/families/${company.id}`}
-                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-surface border border-border-subtle rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors text-primary"
-                            >
-                              <span>Manage</span>
-                              <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                            </Link>
-                            <button
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to delete company "${company.name}"? This will delete all its employees and documents.`)) {
-                                  deleteCompanyMutation.mutate(company.id);
-                                }
-                              }}
-                              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 border border-danger/20 text-danger rounded-lg text-xs font-semibold hover:bg-danger/5 transition-colors cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
+                          </td>
+                          <td className="p-lg text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                href={`/companies/${company.id}`}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 bg-surface border border-border-subtle rounded-lg text-xs font-semibold hover:bg-surface-container-low transition-colors text-primary"
+                              >
+                                <span>Manage</span>
+                                <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                              </Link>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete company "${company.name}"? This will delete all its employees and documents.`)) {
+                                    deleteCompanyMutation.mutate(company.id);
+                                  }
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 w-24 border border-danger/20 text-danger rounded-lg text-xs font-semibold hover:bg-danger/5 transition-colors cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
             </table>
           </div>
         </div>

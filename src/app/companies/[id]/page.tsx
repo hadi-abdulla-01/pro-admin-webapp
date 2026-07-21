@@ -112,6 +112,9 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [documentsSortDir, setDocumentsSortDir] = useState<'asc' | 'desc'>('asc');
   const [employeesSortDir, setEmployeesSortDir] = useState<'asc' | 'desc'>('asc');
   const [empDocsSortDir, setEmpDocsSortDir] = useState<'asc' | 'desc'>('asc');
+  // Drag-and-drop state for Manage Employee Documents modal
+  const [isEmpDocsDragActive, setIsEmpDocsDragActive] = useState(false);
+  const [empDocOrder, setEmpDocOrder] = useState<string[]>([]);
 
   const {
     register: registerEmployee,
@@ -881,8 +884,17 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     // Prevent dragging across different category groups
     const draggedGroup = draggedItem.document_categories?.category_group || 'company';
     const hoverGroup = hoverItem.document_categories?.category_group || 'company';
-    if (draggedGroup !== hoverGroup) {
-      return;
+    if (draggedGroup !== hoverGroup) return;
+    
+    // For partner/relative groups, also prevent dragging across different owners
+    if (draggedGroup === 'partner' || draggedGroup === 'relative') {
+      const draggedOwner = draggedGroup === 'relative' && draggedItem.employees
+        ? `${draggedItem.employees.first_name} ${draggedItem.employees.last_name}`
+        : (draggedItem.owner_name || 'Unknown');
+      const hoverOwner = hoverGroup === 'relative' && hoverItem.employees
+        ? `${hoverItem.employees.first_name} ${hoverItem.employees.last_name}`
+        : (hoverItem.owner_name || 'Unknown');
+      if (draggedOwner !== hoverOwner) return;
     }
     
     newOrder.splice(dragIndex, 1);
@@ -903,42 +915,48 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
   const saveDocOrder = async () => {
     try {
-      // Group documents by category_group and assign order_index within each group
+      // Group documents by category_group, then by owner within partner/relative groups,
+      // and assign order_index per owner bucket so the Flutter app reads them back correctly.
       const groupOrder = { company: 0, partner: 1, employee: 2, family: 3, relative: 4 };
-      const groups: Record<string, any[]> = {};
-      
-      docOrder.forEach((id, index) => {
+
+      // Build a map: ownerKey → ordered docs
+      // ownerKey = "<group>" for company/employee/family, or "<group>|<ownerName>" for partner/relative
+      const ownerBuckets: Record<string, any[]> = {};
+
+      docOrder.forEach((id) => {
         const doc = sortedVisibleDocuments.find(d => d.id === id);
-        if (doc) {
-          const group = doc.document_categories?.category_group || 'company';
-          if (!groups[group]) groups[group] = [];
-          groups[group].push({ doc, originalIndex: index });
+        if (!doc) return;
+        const group = doc.document_categories?.category_group || 'company';
+        let ownerKey = group;
+        if (group === 'partner' || group === 'relative') {
+          const owner = group === 'relative' && doc.employees
+            ? `${doc.employees.first_name} ${doc.employees.last_name}`
+            : (doc.owner_name || 'Unknown');
+          ownerKey = `${group}|${owner}`;
         }
+        if (!ownerBuckets[ownerKey]) ownerBuckets[ownerKey] = [];
+        ownerBuckets[ownerKey].push(doc);
       });
-      
-      // Calculate order_index for each document within its group
-      const updates: any[] = [];
-      Object.keys(groups).forEach(group => {
-        const groupDocs = groups[group];
-        groupDocs.forEach(({ doc }, groupIndex) => {
-          // Calculate global order_index based on group position and position within group
-          const groupOffset = groupOrder[group as keyof typeof groupOrder] * 1000;
-          const finalOrderIndex = groupOffset + groupIndex;
-          
-          // Determine the correct table based on whether it's an employee document
+
+      // Assign order_index: group base offset (×1000) + within-owner position
+      const updates: Promise<any>[] = [];
+      Object.entries(ownerBuckets).forEach(([ownerKey, docs]) => {
+        const group = ownerKey.split('|')[0] as keyof typeof groupOrder;
+        const groupOffset = (groupOrder[group] ?? 9) * 1000;
+        docs.forEach((doc, posInOwner) => {
           const table = doc.employee_id ? 'employee_documents' : 'company_documents';
-          
           updates.push(
-            supabase.from(table)
-              .update({ order_index: finalOrderIndex })
-              .eq('id', doc.id)
+            (async () => {
+              await supabase.from(table)
+                .update({ order_index: groupOffset + posInOwner })
+                .eq('id', doc.id);
+            })()
           );
         });
       });
-      
-      await Promise.all(updates.map(u => u.then()));
-      
-      // Invalidate queries to refresh data
+
+      await Promise.all(updates);
+
       queryClient.invalidateQueries({ queryKey: ['company-documents', companyId] });
       queryClient.invalidateQueries({ queryKey: ['company-employee-documents', companyId] });
       setIsDocDragActive(false);
@@ -1354,11 +1372,61 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   });
 
   const sortedEmpDocs = (empDocs || []).slice().sort((a: any, b: any) => {
+    // While drag is active, use the in-memory order
+    if (isEmpDocsDragActive && empDocOrder.length > 0) {
+      const ai = empDocOrder.indexOf(a.id);
+      const bi = empDocOrder.indexOf(b.id);
+      return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
+    }
+    // Default: respect order_index set from the web drag-and-drop
+    if (empDocsSort === 'default') return (a.order_index ?? 0) - (b.order_index ?? 0);
     const dir = empDocsSortDir === 'asc' ? 1 : -1;
     if (empDocsSort === 'alpha') return (a.file_name || '').localeCompare(b.file_name || '') * dir;
     if (empDocsSort === 'expiry') return ((a.expiry_date ? Date.parse(a.expiry_date) : 0) - (b.expiry_date ? Date.parse(b.expiry_date) : 0)) * dir;
     return ((Date.parse(a.uploaded_at || a.created_at || a.issue_date || '') || 0) - (Date.parse(b.uploaded_at || b.created_at || b.issue_date || '') || 0)) * dir;
   });
+
+  const moveEmpDocRow = (dragIndex: number, hoverIndex: number) => {
+    const newOrder = [...empDocOrder];
+    const draggedId = newOrder[dragIndex];
+    if (!draggedId) return;
+    newOrder.splice(dragIndex, 1);
+    newOrder.splice(hoverIndex, 0, draggedId);
+    setEmpDocOrder(newOrder);
+  };
+
+  const toggleEmpDocsDragMode = () => {
+    if (empDocsSort !== 'default') {
+      alert('Please switch to "Default Order" sorting to enable drag-and-drop reordering.');
+      return;
+    }
+    if (!isEmpDocsDragActive) {
+      setEmpDocOrder(sortedEmpDocs.map((d: any) => d.id));
+    }
+    setIsEmpDocsDragActive(!isEmpDocsDragActive);
+  };
+
+  const saveEmpDocOrder = async () => {
+    try {
+      const updates = empDocOrder.map((id, index) =>
+        (async () => {
+          await supabase
+            .from('employee_documents')
+            .update({ order_index: index })
+            .eq('id', id);
+        })()
+      );
+      await Promise.all(updates);
+      if (managedEmployee) {
+        queryClient.invalidateQueries({ queryKey: ['employee-documents', managedEmployee.id] });
+        queryClient.invalidateQueries({ queryKey: ['company-employee-documents', companyId] });
+      }
+      setIsEmpDocsDragActive(false);
+    } catch (error) {
+      console.error('Error saving employee document order:', error);
+      alert('Failed to save document order');
+    }
+  };
 
   // Delete Employee Action
   const deleteEmployeeMutation = useMutation({
@@ -2945,6 +3013,8 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                   setEmpDocFileName('');
                   setEmpDocExpiry('');
                   setEmpDocFile(null);
+                  setIsEmpDocsDragActive(false);
+                  setEmpDocOrder([]);
                 }}
                 className="p-1 rounded-full hover:bg-surface-container transition-colors cursor-pointer"
               >
@@ -3061,25 +3131,56 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 <h4 className="font-title-md text-title-md text-on-surface">Registered Documents</h4>
 
                 <div className="flex items-center justify-between">
-                  <div />
                   <div className="flex items-center gap-2">
-                    <select
-                      value={empDocsSort}
-                      onChange={(e) => setEmpDocsSort(e.target.value as any)}
-                      className="bg-white border border-border-subtle rounded-lg px-2 py-1 text-xs"
-                    >
-                      <option value="alpha">Alphabetical</option>
-                      <option value="created">Date Created</option>
-                      <option value="expiry">Expiry Date</option>
-                    </select>
-                    <button
-                      onClick={() => setEmpDocsSortDir(empDocsSortDir === 'asc' ? 'desc' : 'asc')}
-                      className="px-2 py-1 bg-white border border-border-subtle rounded-lg text-xs"
-                      title="Toggle sort direction"
-                    >
-                      {empDocsSortDir === 'asc' ? 'Asc' : 'Desc'}
-                    </button>
+                    {/* Drag-and-drop toggle */}
+                    {!isEmpDocsDragActive ? (
+                      <button
+                        onClick={toggleEmpDocsDragMode}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-semibold hover:bg-primary/20 transition-colors cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-sm">drag_handle</span>
+                        Arrange Order
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={saveEmpDocOrder}
+                          className="flex items-center gap-1.5 px-3 py-1 bg-primary text-white rounded-lg text-xs font-semibold hover:brightness-110 transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-sm">save</span>
+                          Save Order
+                        </button>
+                        <button
+                          onClick={() => setIsEmpDocsDragActive(false)}
+                          className="px-3 py-1 bg-white border border-border-subtle rounded-lg text-xs font-semibold hover:bg-surface-container transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <span className="text-xs text-on-surface-variant">Drag rows to reorder</span>
+                      </div>
+                    )}
                   </div>
+                  {!isEmpDocsDragActive && (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={empDocsSort}
+                        onChange={(e) => setEmpDocsSort(e.target.value as any)}
+                        className="bg-white border border-border-subtle rounded-lg px-2 py-1 text-xs"
+                      >
+                        <option value="default">Default Order</option>
+                        <option value="alpha">Alphabetical</option>
+                        <option value="created">Date Created</option>
+                        <option value="expiry">Expiry Date</option>
+                      </select>
+                      <button
+                        onClick={() => setEmpDocsSortDir(empDocsSortDir === 'asc' ? 'desc' : 'asc')}
+                        className="px-2 py-1 bg-white border border-border-subtle rounded-lg text-xs"
+                        title="Toggle sort direction"
+                      >
+                        {empDocsSortDir === 'asc' ? 'Asc' : 'Desc'}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border border-border-subtle rounded-xl overflow-hidden bg-bg-subtle">
@@ -3087,73 +3188,90 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                     <table className="w-full border-collapse text-left text-xs">
                       <thead>
                         <tr className="bg-surface-container-low border-b border-border-subtle font-bold text-on-surface-variant text-[10px] uppercase tracking-wider">
+                          {isEmpDocsDragActive && <th className="p-md w-8"></th>}
                           <th className="p-md">File Name</th>
                           <th className="p-md">Category</th>
                           <th className="p-md">Expiry</th>
-                          <th className="p-md text-right">Actions</th>
+                          {!isEmpDocsDragActive && <th className="p-md text-right">Actions</th>}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border-subtle bg-white font-body-sm text-on-surface">
-                        {isEmpDocsLoading ? (
-                          <tr>
-                            <td colSpan={4} className="p-lg text-center">Loading documents...</td>
-                          </tr>
-                        ) : sortedEmpDocs && sortedEmpDocs.length > 0 ? (
-                          sortedEmpDocs.map((doc) => {
-                            const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
-                            const isSoon = doc.expiry_date && !isExpired && new Date(doc.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                      {isEmpDocsDragActive ? (
+                        <DndProvider backend={HTML5Backend}>
+                          <tbody className="divide-y divide-border-subtle bg-white font-body-sm text-on-surface">
+                            {isEmpDocsLoading ? (
+                              <tr><td colSpan={4} className="p-lg text-center">Loading documents...</td></tr>
+                            ) : sortedEmpDocs && sortedEmpDocs.length > 0 ? (
+                              sortedEmpDocs.map((doc: any, index: number) => (
+                                <DraggableEmpDocRow key={doc.id} doc={doc} index={index} moveRow={moveEmpDocRow} />
+                              ))
+                            ) : (
+                              <tr><td colSpan={4} className="p-lg text-center text-on-surface-variant">No documents uploaded.</td></tr>
+                            )}
+                          </tbody>
+                        </DndProvider>
+                      ) : (
+                        <tbody className="divide-y divide-border-subtle bg-white font-body-sm text-on-surface">
+                          {isEmpDocsLoading ? (
+                            <tr>
+                              <td colSpan={4} className="p-lg text-center">Loading documents...</td>
+                            </tr>
+                          ) : sortedEmpDocs && sortedEmpDocs.length > 0 ? (
+                            sortedEmpDocs.map((doc: any) => {
+                              const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+                              const isSoon = doc.expiry_date && !isExpired && new Date(doc.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-                            return (
-                              <tr key={doc.id} className="hover:bg-surface-container-lowest transition-colors">
-                                <td className="p-md font-bold truncate max-w-[150px]" title={doc.file_name}>
-                                  {doc.file_name}
-                                </td>
-                                <td className="p-md text-on-surface-variant font-medium">
-                                  {doc.document_categories?.name || 'Other'}
-                                </td>
-                                <td className="p-md">
-                                  <div className="flex flex-col text-xs text-on-surface-variant font-medium">
-                                    <span>Issue: {doc.issue_date ? new Date(doc.issue_date).toLocaleDateString() : 'N/A'}</span>
-                                    <span className={isExpired ? 'text-danger font-bold' : isSoon ? 'text-warning font-bold' : ''}>
-                                      Expiry: {doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'No Expiry'}
-                                    </span>
-                                  </div>
-                                </td>
-                                 <td className="p-md text-right whitespace-nowrap">
-                                   <div className="flex items-center justify-end gap-1.5">
-                                     <button
-                                       onClick={() => handleViewEmpDoc(doc.file_path)}
-                                       className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-primary rounded hover:bg-primary/5 transition-colors cursor-pointer"
-                                     >
-                                       Open
-                                     </button>
-                                     <button
-                                       onClick={() => handleOpenEditEmpDocModal(doc)}
-                                       className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-on-surface rounded hover:bg-surface-container transition-colors cursor-pointer"
-                                     >
-                                       Edit
-                                     </button>
-                                     <button
-                                       onClick={() => {
-                                         if (confirm('Are you sure you want to delete this document?')) {
-                                           deleteEmpDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
-                                         }
-                                       }}
-                                       className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-danger/20 text-danger rounded hover:bg-danger/5 transition-colors cursor-pointer"
-                                     >
-                                       Delete
-                                     </button>
-                                   </div>
-                                 </td>
-                              </tr>
-                            );
-                          })
-                        ) : (
-                          <tr>
-                            <td colSpan={4} className="p-lg text-center text-on-surface-variant">No documents uploaded.</td>
-                          </tr>
-                        )}
-                      </tbody>
+                              return (
+                                <tr key={doc.id} className="hover:bg-surface-container-lowest transition-colors">
+                                  <td className="p-md font-bold truncate max-w-[150px]" title={doc.file_name}>
+                                    {doc.file_name}
+                                  </td>
+                                  <td className="p-md text-on-surface-variant font-medium">
+                                    {doc.document_categories?.name || 'Other'}
+                                  </td>
+                                  <td className="p-md">
+                                    <div className="flex flex-col text-xs text-on-surface-variant font-medium">
+                                      <span>Issue: {doc.issue_date ? new Date(doc.issue_date).toLocaleDateString() : 'N/A'}</span>
+                                      <span className={isExpired ? 'text-danger font-bold' : isSoon ? 'text-warning font-bold' : ''}>
+                                        Expiry: {doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'No Expiry'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                   <td className="p-md text-right whitespace-nowrap">
+                                     <div className="flex items-center justify-end gap-1.5">
+                                       <button
+                                         onClick={() => handleViewEmpDoc(doc.file_path)}
+                                         className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-primary rounded hover:bg-primary/5 transition-colors cursor-pointer"
+                                       >
+                                         Open
+                                       </button>
+                                       <button
+                                         onClick={() => handleOpenEditEmpDocModal(doc)}
+                                         className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-border-subtle text-on-surface rounded hover:bg-surface-container transition-colors cursor-pointer"
+                                       >
+                                         Edit
+                                       </button>
+                                       <button
+                                         onClick={() => {
+                                           if (confirm('Are you sure you want to delete this document?')) {
+                                             deleteEmpDocMutation.mutate({ id: doc.id, filePath: doc.file_path });
+                                           }
+                                         }}
+                                         className="inline-flex items-center justify-center w-[68px] px-2 py-0.5 text-[10px] font-semibold border border-danger/20 text-danger rounded hover:bg-danger/5 transition-colors cursor-pointer"
+                                       >
+                                         Delete
+                                       </button>
+                                     </div>
+                                   </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="p-lg text-center text-on-surface-variant">No documents uploaded.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      )}
                     </table>
                   </div>
                 </div>
@@ -3640,6 +3758,55 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
     </AdminLayout>
   );
 }
+
+const DraggableEmpDocRow = ({ doc, index, moveRow }: { doc: any, index: number, moveRow: (dragIndex: number, hoverIndex: number) => void }) => {
+  const ref = React.useRef<HTMLTableRowElement>(null);
+  const [{ isDragging }, drag] = useDrag({
+    type: 'EMP_DOCUMENT_ROW',
+    item: { id: doc.id, index },
+    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+  });
+  const [, drop] = useDrop({
+    accept: 'EMP_DOCUMENT_ROW',
+    hover(item: { id: string; index: number }) {
+      if (!ref.current) return;
+      const dragIndex = item.index;
+      const hoverIndex = index;
+      if (dragIndex === hoverIndex) return;
+      moveRow(dragIndex, hoverIndex);
+      item.index = hoverIndex;
+    },
+  });
+  drag(drop(ref));
+
+  const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+  const isSoon = doc.expiry_date && !isExpired && new Date(doc.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  return (
+    <tr
+      ref={ref}
+      style={{ opacity: isDragging ? 0.4 : 1, cursor: 'move' }}
+      className="hover:bg-surface-container-lowest transition-colors"
+    >
+      <td className="p-md w-8 text-center">
+        <span className="material-symbols-outlined text-on-surface-variant text-base select-none">drag_handle</span>
+      </td>
+      <td className="p-md font-bold truncate max-w-[150px]" title={doc.file_name}>
+        {doc.file_name}
+      </td>
+      <td className="p-md text-on-surface-variant font-medium">
+        {doc.document_categories?.name || 'Other'}
+      </td>
+      <td className="p-md">
+        <div className="flex flex-col text-xs text-on-surface-variant font-medium">
+          <span className={isExpired ? 'text-danger font-bold' : isSoon ? 'text-warning font-bold' : ''}>
+            {doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'No Expiry'}
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+};
 
 const DraggableDocRow = ({ doc, index, moveRow }: { doc: any, index: number, moveRow: (dragIndex: number, hoverIndex: number) => void }) => {
   const ref = React.useRef<HTMLTableRowElement>(null);
