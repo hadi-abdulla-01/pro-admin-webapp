@@ -1,0 +1,31 @@
+# Netlify configuration file
+[build]
+  command = "npm run build"
+  publish = ".next"
+  functions = ".netlify/functions"
+
+[functions]
+  external_node_modules = ["@opentelemetry/api"]
+  node_bundler = "esbuild"
+
+[edge_functions]
+  external_node_modules = ["@opentelemetry/api"]
+
+# Environment variables
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_PRIVATE_TARGET = "server"
+
+# Redirects and headers
+[[redirects]]
+  from = "/*"
+  to = "/.next/server/pages/:splat"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
