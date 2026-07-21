@@ -39,15 +39,35 @@ export async function POST(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { notification_id, company_id, title, message } =
+    const { notification_id, company_id, title, message, idempotency_key } =
       await request.json();
 
     if (!notification_id) {
       return NextResponse.json({ error: 'notification_id required' }, { status: 400 });
     }
 
+    // Generate idempotency key if not provided (based on notification_id + timestamp rounded to 10s)
+    const effectiveIdempotencyKey = idempotency_key || 
+      `${notification_id}_${Math.floor(Date.now() / 10000)}`;
+
     // COMPREHENSIVE DUPLICATE PREVENTION - MULTIPLE LAYERS
     
+    // Layer 0: Atomic idempotency check (most reliable - prevents concurrent duplicate submissions)
+    const { data: existingIdempotent, error: idempotentError } = await supabaseAdmin
+      .from('notification_deliveries')
+      .select('id')
+      .eq('idempotency_key', effectiveIdempotencyKey)
+      .maybeSingle();
+
+    if (!idempotentError && existingIdempotent) {
+      console.log(`[send-push] ❌ IDEMPOTENCY BLOCKED: Duplicate request with key ${effectiveIdempotencyKey}`);
+      return NextResponse.json({ 
+        skipped: true, 
+        reason: 'already_processed',
+        message: 'Duplicate notification prevented by idempotency key'
+      });
+    }
+
     // Layer 1: Check if notification was already processed (database level)
     const { data: existing, error: checkError } = await supabaseAdmin
       .from('notification_deliveries')
@@ -59,15 +79,13 @@ export async function POST(request: NextRequest) {
       const error = checkError as Error;
       if (!error.message.includes('relation "notification_deliveries" does not exist')) {
         console.error('[send-push] Error checking for duplicates:', error);
-        // Continue processing if the table doesn't exist (backward compatibility)
       }
     } else if (existing) {
-      // Check if the notification was processed recently (within last 2 minutes - tighter window)
       const processedAt = new Date(existing.processed_at);
       const now = new Date();
       const minutesSinceProcessed = (now.getTime() - processedAt.getTime()) / (1000 * 60);
       
-      if (minutesSinceProcessed < 2) {
+      if (minutesSinceProcessed < 5) {
         console.log(`[send-push] ❌ DUPLICATE BLOCKED: Notification ${notification_id} already processed ${minutesSinceProcessed.toFixed(1)} minutes ago`);
         return NextResponse.json({ 
           skipped: true, 
@@ -79,8 +97,8 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Layer 2: Check for in-progress notifications (memory cache would be ideal, but we'll use short-term DB check)
-    const recentCutoff = new Date(Date.now() - 2 * 60 * 1000); // 2 minutes ago
+    // Layer 2: Check for in-progress notifications (recent duplicates within 3 minutes)
+    const recentCutoff = new Date(Date.now() - 3 * 60 * 1000);
     const { data: recentNotifications, error: recentError } = await supabaseAdmin
       .from('notification_deliveries')
       .select('notification_id')
@@ -181,24 +199,24 @@ export async function POST(request: NextRequest) {
     console.time(`[NOTIFICATION_FLOW] FCM batch for ${notification_id}`);
 
     for (const token of uniqueTokens) {
+      // ⚠️ DATA-ONLY payload: No `notification` block.
+      // Including a `notification` block causes FCM to auto-display the notification
+      // on Android, which then ALSO triggers the local notification from the background
+      // handler — resulting in DOUBLE notifications.
+      // With data-only, FCM delivers silently in background/killed state and only
+      // the background handler (or foreground listener) shows one local notification.
       const payload = {
         message: {
           token,
-          notification: {
-            title: title ?? 'PRO Services',
-            body: message ?? '',
-          },
           data: {
             notification_id: notification_id,
             company_id: company_id ?? '',
+            title: title ?? 'PRO Services',
+            body: message ?? '',
             click_action: 'FLUTTER_NOTIFICATION_CLICK',
           },
           android: {
             priority: 'high' as const,
-            notification: {
-              channel_id: 'pro_services_channel',
-              sound: 'default',
-            },
           },
         },
       };
@@ -246,6 +264,7 @@ export async function POST(request: NextRequest) {
             total_count: uniqueTokens.length,
             users_count: userTokensMap.size,
             processed_at: new Date().toISOString(),
+            idempotency_key: effectiveIdempotencyKey,
           },
         ]);
     } catch (recordError) {
@@ -262,6 +281,7 @@ export async function POST(request: NextRequest) {
                 failed_count: failed,
                 total_count: tokens.length,
                 processed_at: new Date().toISOString(),
+                idempotency_key: effectiveIdempotencyKey,
               },
             ])
             .select();
