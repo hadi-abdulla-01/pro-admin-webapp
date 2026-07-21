@@ -46,7 +46,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'notification_id required' }, { status: 400 });
     }
 
-    // Enhanced duplicate prevention with multiple checks
+    // COMPREHENSIVE DUPLICATE PREVENTION - MULTIPLE LAYERS
+    
+    // Layer 1: Check if notification was already processed (database level)
     const { data: existing, error: checkError } = await supabaseAdmin
       .from('notification_deliveries')
       .select('id, processed_at')
@@ -60,18 +62,38 @@ export async function POST(request: NextRequest) {
         // Continue processing if the table doesn't exist (backward compatibility)
       }
     } else if (existing) {
-      // Check if the notification was processed recently (within last 5 minutes)
+      // Check if the notification was processed recently (within last 2 minutes - tighter window)
       const processedAt = new Date(existing.processed_at);
       const now = new Date();
       const minutesSinceProcessed = (now.getTime() - processedAt.getTime()) / (1000 * 60);
       
-      if (minutesSinceProcessed < 5) {
-        console.log(`[send-push] Notification ${notification_id} already processed ${minutesSinceProcessed.toFixed(1)} minutes ago, skipping`);
-        return NextResponse.json({ skipped: true, reason: 'already_processed' });
+      if (minutesSinceProcessed < 2) {
+        console.log(`[send-push] ❌ DUPLICATE BLOCKED: Notification ${notification_id} already processed ${minutesSinceProcessed.toFixed(1)} minutes ago`);
+        return NextResponse.json({ 
+          skipped: true, 
+          reason: 'already_processed',
+          message: `Duplicate notification prevented - processed ${minutesSinceProcessed.toFixed(1)} minutes ago`
+        });
       } else {
-        // If it's an old record, update it rather than creating a duplicate
-        console.log(`[send-push] Notification ${notification_id} was processed ${minutesSinceProcessed.toFixed(1)} minutes ago, updating record`);
+        console.log(`[send-push] ⚠️  RETRY DETECTED: Notification ${notification_id} was processed ${minutesSinceProcessed.toFixed(1)} minutes ago, allowing retry`);
       }
+    }
+    
+    // Layer 2: Check for in-progress notifications (memory cache would be ideal, but we'll use short-term DB check)
+    const recentCutoff = new Date(Date.now() - 2 * 60 * 1000); // 2 minutes ago
+    const { data: recentNotifications, error: recentError } = await supabaseAdmin
+      .from('notification_deliveries')
+      .select('notification_id')
+      .gte('processed_at', recentCutoff.toISOString())
+      .eq('notification_id', notification_id);
+    
+    if (recentNotifications && recentNotifications.length > 0) {
+      console.log(`[send-push] ❌ RECENT DUPLICATE BLOCKED: Notification ${notification_id} found in recent deliveries`);
+      return NextResponse.json({ 
+        skipped: true,
+        reason: 'recent_duplicate',
+        message: 'Duplicate notification prevented - found in recent delivery history'
+      });
     }
 
     // Determine which users to notify

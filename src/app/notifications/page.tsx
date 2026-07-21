@@ -20,6 +20,7 @@ type NotifyFields = zod.infer<typeof notifySchema>;
 export default function NotificationsConfigPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [lastNotificationTime, setLastNotificationTime] = useState<number | null>(null);
 
   const {
     register,
@@ -56,7 +57,7 @@ export default function NotificationsConfigPage() {
     },
   });
 
-  // Add Notification
+  // Add Notification with comprehensive duplicate prevention
   const addNotifyMutation = useMutation({
     mutationFn: async (fields: NotifyFields) => {
       // 1. Insert into Supabase
@@ -76,9 +77,11 @@ export default function NotificationsConfigPage() {
 
       const notificationId = inserted?.[0]?.id;
 
-      // 2. Send FCM push (fire-and-forget — non-blocking)
+      // 2. Send FCM push with comprehensive error handling and duplicate prevention
       if (notificationId) {
         try {
+          console.log(`[Notification] Starting push for notification ${notificationId}`);
+          
           const response = await fetch('/api/send-push', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -90,12 +93,22 @@ export default function NotificationsConfigPage() {
             }),
           });
           
+          const responseData = await response.json();
+          
           if (!response.ok) {
-            const errorData = await response.json();
-            console.error('Push send error:', errorData);
+            console.error('Push send error:', responseData);
+            // If it's a duplicate, log it but don't throw
+            if (responseData.reason === 'already_processed' || responseData.reason === 'recent_duplicate') {
+              console.log(`[Notification] ✅ Duplicate prevented: ${responseData.message}`);
+            } else {
+              throw new Error(responseData.error || 'Unknown push error');
+            }
+          } else {
+            console.log(`[Notification] ✅ Successfully sent to ${responseData.users || responseData.total} users`);
           }
         } catch (e) {
-          console.error('Push send error:', e);
+          console.error('[Notification] ❌ Push send error:', e);
+          throw e; // Re-throw to mark mutation as failed
         }
       }
     },
@@ -118,7 +131,15 @@ export default function NotificationsConfigPage() {
     },
   });
 
+  // Client-side duplicate prevention - prevent rapid successive submissions
   const onSubmit = (data: NotifyFields) => {
+    const now = Date.now();
+    if (lastNotificationTime && (now - lastNotificationTime) < 10000) { // 10 second cooldown
+      alert('Please wait a few seconds before sending another notification to prevent duplicates.');
+      return;
+    }
+    
+    setLastNotificationTime(now);
     addNotifyMutation.mutate(data);
   };
 
