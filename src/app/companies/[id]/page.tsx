@@ -1213,10 +1213,6 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
         if (storageError) throw storageError;
 
-        // Get the relative's name for owner_name
-        const selectedRelative = employees?.find((emp: any) => emp.id === uploadRelativeEmployeeId);
-        const ownerName = selectedRelative ? `${selectedRelative.first_name} ${selectedRelative.last_name}` : null;
-
         const { error: dbError } = await supabase.from('employee_documents').insert([
           {
             employee_id: uploadRelativeEmployeeId,
@@ -1226,7 +1222,6 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             size_bytes: fileSize,
             issue_date: uploadIssue || null,
             expiry_date: uploadExpiry || null,
-            owner_name: ownerName,
             status: 'active',
           },
         ]);
@@ -1489,7 +1484,6 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       if (storageError) throw storageError;
 
       // 2. Insert record metadata to Database
-      const ownerName = `${managedEmployee.first_name} ${managedEmployee.last_name}`;
       const { error: dbError } = await supabase.from('employee_documents').insert([
         {
           employee_id: managedEmployee.id,
@@ -1499,7 +1493,6 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
           size_bytes: fileSize,
           issue_date: empDocIssue || null,
           expiry_date: empDocExpiry || null,
-          owner_name: ownerName,
           status: 'active',
         },
       ]);
