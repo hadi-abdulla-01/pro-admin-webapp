@@ -121,7 +121,21 @@ export async function POST(request: NextRequest) {
       .not('fcm_token', 'is', null);
 
     if (company_id) {
-      query = query.eq('company_id', company_id);
+      // Check if this company belongs to a group
+      const { data: companyData } = await supabaseAdmin
+        .from('companies')
+        .select('group_id')
+        .eq('id', company_id)
+        .single();
+
+      if (companyData?.group_id) {
+        // Company belongs to a group - target all users in that group
+        query = query.eq('group_id', companyData.group_id);
+        console.log(`[send-push] Company ${company_id} belongs to group ${companyData.group_id} - targeting all group users`);
+      } else {
+        // Standalone company - target users with this company_id
+        query = query.eq('company_id', company_id);
+      }
     }
 
     const { data: users, error: userError } = await query;
