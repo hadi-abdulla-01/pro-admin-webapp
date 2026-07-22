@@ -271,8 +271,6 @@ export default function FamiliesPage() {
                 <tr className="bg-bg-subtle border-b border-border-subtle text-label-sm text-on-surface-variant font-bold">
                   <th className="p-lg">Name</th>
                   <th className="p-lg">CID</th>
-                  <th className="p-lg">Trade License / ID</th>
-                  <th className="p-lg">Expiry Date</th>
                   <th className="p-lg text-center">Active Members</th>
                   <th className="p-lg text-center">Pending Renewals</th>
                   <th className="p-lg text-center">Status</th>
@@ -282,7 +280,7 @@ export default function FamiliesPage() {
                 <tbody className="divide-y divide-border-subtle font-body-sm text-on-surface">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={8} className="p-xl text-center text-on-surface-variant">
+                      <td colSpan={6} className="p-xl text-center text-on-surface-variant">
                         <div className="flex justify-center items-center gap-2">
                           <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></span>
                           <span>Loading entities...</span>
@@ -291,7 +289,7 @@ export default function FamiliesPage() {
                     </tr>
                   ) : orderedCompanies.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-xl text-center text-on-surface-variant">
+                      <td colSpan={6} className="p-xl text-center text-on-surface-variant">
                         No records found.
                       </td>
                     </tr>
@@ -299,7 +297,6 @@ export default function FamiliesPage() {
                     orderedCompanies.map((company) => {
                       const activeEmployees = (company.employees || []).filter((e: any) => e.status === 'active').length;
                       const pendingRenewals = (company.renewal_requests || []).filter((r: any) => r.status === 'pending' || r.status === 'requested' || r.status === 'in_progress').length;
-                      const isExpired = company.trade_license_expiry && new Date(company.trade_license_expiry) < new Date();
                       const isIndividual = company.entity_type === 'individual';
 
                       return (
@@ -337,16 +334,6 @@ export default function FamiliesPage() {
                             ) : (
                               <span className="text-on-surface-variant text-xs">—</span>
                             )}
-                          </td>
-                          <td className="p-lg">
-                            <div className="flex flex-col">
-                              <span className={isExpired ? 'text-danger font-bold' : 'text-on-surface'}>
-                                {company.trade_license_expiry ? new Date(company.trade_license_expiry).toLocaleDateString() : 'N/A'}
-                              </span>
-                              {isExpired && (
-                                <span className="text-[10px] text-danger font-bold uppercase tracking-wider">EXPIRED</span>
-                              )}
-                            </div>
                           </td>
                           <td className="p-lg text-center font-bold">{activeEmployees}</td>
                           <td className="p-lg text-center font-bold text-warning">{pendingRenewals}</td>
